@@ -51,6 +51,10 @@ impl Matrix {
         sum
     }
 
+    pub fn sigmoid(&self) {
+        todo!()
+    }
+
     // this is literally just max(o,x)
     pub fn relu(&mut self) -> B32 {
         let size = self.row * self.col;
