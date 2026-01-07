@@ -3,7 +3,7 @@ use std::{fs::File, io::Read};
 use crate::types::{B8, B32};
 
 #[warn(dead_code)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Matrix {
     pub row: usize,
     pub col: usize,
@@ -19,7 +19,7 @@ impl Matrix {
         }
     }
 
-    fn mat_copy(&self, dst: &mut Matrix) -> B32 {
+    pub fn mat_copy(&self, dst: &mut Matrix) -> B32 {
         if self.row != dst.row || self.col != dst.col {
             return B32(0);
         }
@@ -27,22 +27,22 @@ impl Matrix {
         B32(1)
     }
 
-    fn clear(&mut self) {
+    pub fn clear(&mut self) {
         self.data.clear();
     }
 
-    fn fill(&mut self, x: f32) {
+    pub fn fill(&mut self, x: f32) {
         self.data.fill(x);
     }
 
-    fn scale(&mut self, scale: f32) {
+    pub fn scale(&mut self, scale: f32) {
         let size = self.row * self.col;
         for i in 0..size {
             self.data[i] *= scale;
         }
     }
 
-    fn sum(&self) -> f32 {
+    pub fn sum(&self) -> f32 {
         let mut sum: f32 = 0.00;
         let size = self.row * self.col;
         for i in 0..size {
@@ -52,7 +52,7 @@ impl Matrix {
     }
 
     // this is literally just max(o,x)
-    fn relu(&mut self) -> B32 {
+    pub fn relu(&mut self) -> B32 {
         let size = self.row * self.col;
         for i in 0..size {
             self.data[i] = self.data[i].max(0.0);
@@ -60,7 +60,7 @@ impl Matrix {
         B32(1)
     }
 
-    fn softmax(&mut self) -> B32 {
+    pub fn softmax(&mut self) -> B32 {
         // o_i = e^a_i / sum(e^a_i)
         let mut sum = 0.0f32;
         let size = self.row * self.col;
@@ -73,7 +73,7 @@ impl Matrix {
         B32(1)
     }
 
-    fn cross_entropy(&mut self, p: &Matrix, q: &Matrix) -> B32 {
+    pub fn cross_entropy(&mut self, p: &Matrix, q: &Matrix) -> B32 {
         if p.row != q.row || p.col != q.col {
             return B32(0);
         }
@@ -101,7 +101,7 @@ impl Matrix {
     // fn cross_entropy_add_grad(&mut self, p: &Matrix, q: &Matrix) {}
 }
 
-fn mat_add(out: &mut Matrix, a: &Matrix, b: &Matrix) -> B32 {
+pub fn mat_add(out: &mut Matrix, a: &Matrix, b: &Matrix) -> B32 {
     if a.row != b.row || a.col != b.col {
         return B32(0);
     }
@@ -112,7 +112,7 @@ fn mat_add(out: &mut Matrix, a: &Matrix, b: &Matrix) -> B32 {
     B32(1)
 }
 
-fn mat_sub(out: &mut Matrix, a: &Matrix, b: &Matrix) -> B32 {
+pub fn mat_sub(out: &mut Matrix, a: &Matrix, b: &Matrix) -> B32 {
     if a.row != b.row || a.col != b.col {
         return B32(0);
     }
@@ -126,7 +126,7 @@ fn mat_sub(out: &mut Matrix, a: &Matrix, b: &Matrix) -> B32 {
     B32(1)
 }
 
-fn mat_mul(
+pub fn mat_mul(
     out: &mut Matrix,
     a: &Matrix,
     b: &Matrix,

@@ -1,6 +1,8 @@
 use crate::matrix::{Matrix, load_mat};
 pub mod gradient;
 pub mod matrix;
+pub mod model;
+pub mod tensor;
 pub mod types;
 
 fn draw_mnist_digit_color(m: &Matrix, idx: usize) {
