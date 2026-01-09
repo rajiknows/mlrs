@@ -43,7 +43,7 @@ impl Tensor {
 }
 
 pub struct Graph {
-    nodes: Vec<Tensor>,
+    pub nodes: Vec<Tensor>,
 }
 
 impl Graph {
@@ -194,11 +194,7 @@ impl Graph {
         id
     }
 
-    pub fn step(&mut self, lr: f32) {
-        todo!()
-    }
-
-    fn backtrack(&mut self) {
+    pub fn backtrack(&mut self) {
         // first we need to make the adjacency list for this
         //
         // adj[][] = [[TensorId]]
@@ -222,54 +218,86 @@ impl Graph {
         for &tid in topo_sorted.iter().rev() {
             self.backward_node(tid);
         }
-
-        todo!()
     }
 
     fn backward_node(&mut self, id: TensorId) {
-        let grad = self.nodes[id].grad.clone();
+        let (op, parents, grad, out_data) = {
+            let n = &self.nodes[id];
+            (n.op, n.parents.clone(), n.grad.clone(), n.data.clone())
+        };
 
-        match self.nodes[id].op {
+        match op {
             Op::Add => {
-                let [a, b] = self.nodes[id].parents[..] else {
-                    return;
-                };
-                let mut a_matrix = Matrix::new(self.nodes[a].data.row, self.nodes[a].data.col);
+                let [a, b] = parents[..] else { return };
 
-                let mut b_matrix = Matrix::new(self.nodes[b].data.row, self.nodes[b].data.col);
-
-                mat_add(&mut a_matrix, &self.nodes[a].data, &grad);
-                mat_add(&mut b_matrix, &self.nodes[b].data, &grad);
-                self.nodes[a].data = a_matrix;
-                self.nodes[b].grad = b_matrix;
+                let ga = &mut self.nodes[a].grad;
+                for i in 0..ga.data.len() {
+                    ga.data[i] += grad.data[i];
+                }
+                let gb = &mut self.nodes[b].grad;
+                for i in 0..gb.data.len() {
+                    gb.data[i] += grad.data[i];
+                }
             }
+
             Op::Sub => {
-                let [a, b] = self.nodes[id].parents[..] else {
-                    return;
-                };
-                let mut a_matrix = Matrix::new(self.nodes[a].data.row, self.nodes[a].data.col);
+                let [a, b] = parents[..] else { return };
 
-                let mut b_matrix = Matrix::new(self.nodes[b].data.row, self.nodes[b].data.col);
-
-                mat_sub(&mut a_matrix, &self.nodes[a].data, &grad);
-                mat_sub(&mut b_matrix, &self.nodes[b].data, &grad);
-                self.nodes[a].data = a_matrix;
-                self.nodes[b].grad = b_matrix;
+                for i in 0..grad.data.len() {
+                    self.nodes[a].grad.data[i] += grad.data[i];
+                    self.nodes[b].grad.data[i] -= grad.data[i];
+                }
             }
+
             Op::Mul => {
-                let [a, b] = self.nodes[id].parents[..] else {
-                    return;
-                };
-                let mut a_matrix = Matrix::new(self.nodes[a].data.row, self.nodes[a].data.col);
+                let [a, b] = parents[..] else { return };
 
-                let mut b_matrix = Matrix::new(self.nodes[b].data.row, self.nodes[b].data.col);
+                let mut da = Matrix::new(self.nodes[a].data.row, self.nodes[a].data.col);
+                let mut db = Matrix::new(self.nodes[b].data.row, self.nodes[b].data.col);
 
-                mat_mul(&mut a_matrix, &self.nodes[a].data, &grad);
-                mat_mul(&mut b_matrix, &self.nodes[b].data, &grad);
-                self.nodes[a].data = a_matrix;
-                self.nodes[b].grad = b_matrix;
+                mat_mul(&mut da, &grad, &self.nodes[b].data, B8(1), B8(0), B8(0));
+                mat_mul(&mut db, &grad, &self.nodes[a].data, B8(1), B8(0), B8(0));
+                for i in 0..grad.data.len() {
+                    self.nodes[a].grad.data[i] += grad.data[i] * self.nodes[b].data.data[i];
+                    self.nodes[b].grad.data[i] += grad.data[i] * self.nodes[a].data.data[i];
+                }
             }
+
+            Op::Relu => {
+                let [a] = parents[..] else { return };
+
+                for i in 0..grad.data.len() {
+                    if self.nodes[a].data.data[i] > 0.0 {
+                        self.nodes[a].grad.data[i] += grad.data[i];
+                    }
+                }
+            }
+
+            Op::Sigmoid => {
+                let [a] = parents[..] else { return };
+                for i in 0..grad.data.len() {
+                    let s = out_data.data[i];
+                    self.nodes[a].grad.data[i] += grad.data[i] * s * (1.0 - s);
+                }
+            }
+
             _ => {}
+        }
+    }
+
+    pub fn zero_grad(&mut self) {
+        for n in &mut self.nodes {
+            n.grad.fill(0.0);
+        }
+    }
+
+    pub fn step(&mut self, lr: f32) {
+        for n in &mut self.nodes {
+            if n.req_grad {
+                for i in 0..n.data.data.len() {
+                    n.data.data[i] -= lr * n.grad.data[i];
+                }
+            }
         }
     }
 }

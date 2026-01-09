@@ -1,5 +1,4 @@
 use crate::matrix::{Matrix, load_mat};
-pub mod gradient;
 pub mod matrix;
 pub mod model;
 pub mod tensor;

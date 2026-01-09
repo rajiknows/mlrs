@@ -28,7 +28,7 @@ impl Matrix {
     }
 
     pub fn clear(&mut self) {
-        self.data.clear();
+        self.data.fill(0.0);
     }
 
     pub fn fill(&mut self, x: f32) {
@@ -182,10 +182,12 @@ pub fn mat_mul(
 
 fn _mat_mul_nn(out: &mut Matrix, a: &Matrix, b: &Matrix) {
     for i in 0..out.row {
-        for k in 0..a.col {
-            for j in 0..out.col {
-                out.data[j + i * out.col] += a.data[k + i * a.col] + b.data[j + k * b.col];
+        for j in 0..out.col {
+            let mut sum = 0.0;
+            for k in 0..a.col {
+                sum += a.data[i * a.col + k] * b.data[k * b.col + j];
             }
+            out.data[i * out.col + j] += sum;
         }
     }
 }
