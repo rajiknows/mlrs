@@ -200,7 +200,6 @@ fn _mat_mul_nt(out: &mut Matrix, a: &Matrix, b: &Matrix) {
             }
         }
     }
-    todo!()
 }
 
 fn _mat_mul_tn(out: &mut Matrix, a: &Matrix, b: &Matrix) {
@@ -211,7 +210,6 @@ fn _mat_mul_tn(out: &mut Matrix, a: &Matrix, b: &Matrix) {
             }
         }
     }
-    todo!()
 }
 
 fn _mat_mul_tt(out: &mut Matrix, a: &Matrix, b: &Matrix) {
@@ -222,7 +220,6 @@ fn _mat_mul_tt(out: &mut Matrix, a: &Matrix, b: &Matrix) {
             }
         }
     }
-    todo!()
 }
 
 pub fn load_mat(rows: usize, cols: usize, path: &str) -> Matrix {
