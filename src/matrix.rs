@@ -51,8 +51,10 @@ impl Matrix {
         sum
     }
 
-    pub fn sigmoid(&self) {
-        todo!()
+    pub fn sigmoid(&mut self) {
+        for x in &mut self.data {
+            *x = 1.0 / (1.0 + (-*x).exp());
+        }
     }
 
     // this is literally just max(o,x)
@@ -177,7 +179,7 @@ pub fn mat_mul(
         _ => {}
     }
 
-    return B32(1);
+    B32(1)
 }
 
 fn _mat_mul_nn(out: &mut Matrix, a: &Matrix, b: &Matrix) {
@@ -196,7 +198,7 @@ fn _mat_mul_nt(out: &mut Matrix, a: &Matrix, b: &Matrix) {
     for i in 0..out.row {
         for j in 0..out.col {
             for k in 0..a.col {
-                out.data[j + i * out.col] += a.data[k + i * a.col] + b.data[k + j * b.col];
+                out.data[j + i * out.col] += a.data[k + i * a.col] * b.data[k + j * b.col];
             }
         }
     }
@@ -206,7 +208,7 @@ fn _mat_mul_tn(out: &mut Matrix, a: &Matrix, b: &Matrix) {
     for k in 0..a.row {
         for i in 0..out.row {
             for j in 0..out.col {
-                out.data[j + i * out.col] += a.data[i + k * a.col] + b.data[j + k * b.col];
+                out.data[j + i * out.col] += a.data[i + k * a.col] * b.data[j + k * b.col];
             }
         }
     }
@@ -216,7 +218,7 @@ fn _mat_mul_tt(out: &mut Matrix, a: &Matrix, b: &Matrix) {
     for i in 0..out.row {
         for j in 0..out.col {
             for k in 0..a.col {
-                out.data[j + i * out.col] += a.data[i + k * a.col] + b.data[k + j * b.col];
+                out.data[j + i * out.col] += a.data[i + k * a.col] * b.data[k + j * b.col];
             }
         }
     }

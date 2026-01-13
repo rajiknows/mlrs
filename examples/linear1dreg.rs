@@ -11,9 +11,11 @@ fn main() {
 
     let mut g = Graph { nodes: vec![] };
 
+    // constants
     let x_id = g.tensor(&x, false);
     let y_id = g.tensor(&y, false);
 
+    // parameters
     let w = g.tensor(&Matrix::new(1, 1), true);
     let b = g.tensor(&Matrix::new(1, 1), true);
 
@@ -23,15 +25,17 @@ fn main() {
     for _ in 0..1000 {
         g.zero_grad();
 
-        let y_hat = g.matmul(x_id, w);
-        let y_hat = g.add(y_hat, b);
-        let diff = g.sub(y_hat, y_id);
-        let loss = g.mul(diff, diff);
+        let y_hat = g.matmul(x_id, w); // XW
+        let y_hat = g.add(y_hat, b); // XW + b
+        let diff = g.sub(y_hat, y_id); // error
+        let sq = g.mul(diff, diff); // squared error
+        let loss = g.mean(sq); // scalar loss
 
-        g.backtrack();
+        g.backtrack(loss); // IMPORTANT
         g.step(0.01);
     }
 
     println!("w = {}", g.nodes[w].data.data[0]);
     println!("b = {}", g.nodes[b].data.data[0]);
 }
+

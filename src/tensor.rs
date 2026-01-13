@@ -16,6 +16,8 @@ pub enum Op {
     Relu,
     SoftMax,
     MatMul,
+    Sum,
+    Mean,
 }
 
 pub type TensorId = usize;
@@ -50,7 +52,7 @@ impl Graph {
     pub fn tensor(&mut self, m: &Matrix, required_grad: bool) -> TensorId {
         let id = self.nodes.len();
         self.nodes.push(Tensor {
-            id: id,
+            id,
             req_grad: required_grad,
             grad: Matrix::new(m.row, m.col),
             data: m.clone(),
@@ -69,7 +71,7 @@ impl Graph {
 
         let id = self.nodes.len();
         self.nodes.push(Tensor {
-            id: id,
+            id,
             data: out,
             grad: Matrix::new(ma.row, ma.col),
             op: Op::Add,
@@ -88,7 +90,7 @@ impl Graph {
 
         let id = self.nodes.len();
         self.nodes.push(Tensor {
-            id: id,
+            id,
             data: out,
             grad: Matrix::new(ma.row, ma.col),
             op: Op::Sub,
@@ -101,20 +103,22 @@ impl Graph {
 
     pub fn mul(&mut self, a: TensorId, b: TensorId) -> TensorId {
         let (ma, mb) = (&self.nodes[a].data, &self.nodes[b].data);
+        assert_eq!(ma.row * ma.col, mb.row * mb.col);
 
         let mut out = Matrix::new(ma.row, ma.col);
-        mat_mul(&mut out, ma, mb, B8(1), B8(0), B8(0));
+        for i in 0..out.data.len() {
+            out.data[i] = ma.data[i] * mb.data[i];
+        }
 
         let id = self.nodes.len();
         self.nodes.push(Tensor {
-            id: id,
+            id,
             data: out,
             grad: Matrix::new(ma.row, ma.col),
             op: Op::Mul,
             parents: vec![a, b],
             req_grad: true,
         });
-
         id
     }
 
@@ -126,7 +130,7 @@ impl Graph {
 
         let id = self.nodes.len();
         self.nodes.push(Tensor {
-            id: id,
+            id,
             data: out,
             grad: Matrix::new(m.row, m.col),
             op: Op::Relu,
@@ -145,10 +149,48 @@ impl Graph {
 
         let id = self.nodes.len();
         self.nodes.push(Tensor {
-            id: id,
+            id,
             data: out,
             grad: Matrix::new(m.row, m.col),
             op: Op::SoftMax,
+            parents: vec![x],
+            req_grad: true,
+        });
+
+        id
+    }
+
+    pub fn sum(&mut self, x: TensorId) -> TensorId {
+        let m = &self.nodes[x].data;
+
+        let mut out = Matrix::new(1, 1);
+        out.data[0] = m.sum();
+
+        let id = self.nodes.len();
+        self.nodes.push(Tensor {
+            id,
+            data: out,
+            grad: Matrix::new(1, 1),
+            op: Op::Sum,
+            parents: vec![x],
+            req_grad: true,
+        });
+
+        id
+    }
+
+    pub fn mean(&mut self, x: TensorId) -> TensorId {
+        let m = &self.nodes[x].data;
+
+        let mut out = Matrix::new(1, 1);
+        out.data[0] = m.sum() / (m.row * m.col) as f32;
+
+        let id = self.nodes.len();
+        self.nodes.push(Tensor {
+            id,
+            data: out,
+            grad: Matrix::new(1, 1),
+            op: Op::Mean,
             parents: vec![x],
             req_grad: true,
         });
@@ -164,7 +206,7 @@ impl Graph {
 
         let id = self.nodes.len();
         self.nodes.push(Tensor {
-            id: id,
+            id,
             data: out,
             grad: Matrix::new(ma.row, mb.col),
             op: Op::MatMul,
@@ -176,15 +218,15 @@ impl Graph {
     }
 
     pub fn sigmoid(&mut self, z: TensorId) -> TensorId {
-        let tensor = &self.nodes[z];
-        let matrix_clone = &tensor.data.clone();
+        let tensor = &mut self.nodes[z];
+        let matrix_clone = &mut tensor.data.clone();
         let id = self.nodes.len();
 
         // calculate the sigmoid of matrix
         matrix_clone.sigmoid();
 
         self.nodes.push(Tensor {
-            id: id,
+            id,
             data: matrix_clone.clone(),
             grad: Matrix::new(matrix_clone.row, matrix_clone.col),
             op: Op::Sigmoid,
@@ -194,32 +236,21 @@ impl Graph {
         id
     }
 
-    pub fn backtrack(&mut self) {
-        // first we need to make the adjacency list for this
-        //
-        // adj[][] = [[TensorId]]
-        let n = self.nodes.len();
-        let mut adj_list: Vec<Vec<TensorId>> = vec![Vec::new(); n];
-
-        for node in &self.nodes {
-            for &parent in &node.parents {
-                adj_list[parent].push(node.id);
-            }
+    pub fn backtrack(&mut self, loss: TensorId) {
+        for n in &mut self.nodes {
+            n.grad.fill(0.0);
         }
-        let topo_sorted = topo_sort(&adj_list);
 
-        // now we need to find the gradient of the tensors in this order
-        // and fill them in the tensro
-        //
+        // seed dL/dL = 1
+        self.nodes[loss].grad.data[0] = 1.0;
 
-        let last = self.nodes.len() - 1;
-        self.nodes[last].grad.fill(1.0);
+        let topo = self.topo_from(loss);
 
-        for &tid in topo_sorted.iter().rev() {
-            self.backward_node(tid);
+        // reverse topo: loss → leaves
+        for &id in topo.iter().rev() {
+            self.backward_node(id);
         }
     }
-
     fn backward_node(&mut self, id: TensorId) {
         let (op, parents, grad, out_data) = {
             let n = &self.nodes[id];
@@ -227,6 +258,46 @@ impl Graph {
         };
 
         match op {
+            Op::MatMul => {
+                let [a, b] = parents[..] else { return };
+
+                let grad_z = &grad;
+                let a_data = &self.nodes[a].data;
+                let b_data = &self.nodes[b].data;
+
+                // dA = dZ · Bᵀ
+                let mut da = Matrix::new(a_data.row, a_data.col);
+                mat_mul(&mut da, grad_z, b_data, B8(1), B8(0), B8(1));
+
+                // dB = Aᵀ · dZ
+                let mut db = Matrix::new(b_data.row, b_data.col);
+                mat_mul(&mut db, a_data, grad_z, B8(1), B8(1), B8(0));
+
+                for i in 0..da.data.len() {
+                    self.nodes[a].grad.data[i] += da.data[i];
+                }
+                for i in 0..db.data.len() {
+                    self.nodes[b].grad.data[i] += db.data[i];
+                }
+            }
+            Op::Sum => {
+                let [a] = parents[..] else { return };
+                let g = grad.data[0];
+
+                for i in 0..self.nodes[a].grad.data.len() {
+                    self.nodes[a].grad.data[i] += g;
+                }
+            }
+
+            Op::Mean => {
+                let [a] = parents[..] else { return };
+                let scale = grad.data[0] / (self.nodes[a].data.row * self.nodes[a].data.col) as f32;
+
+                for i in 0..self.nodes[a].grad.data.len() {
+                    self.nodes[a].grad.data[i] += scale;
+                }
+            }
+
             Op::Add => {
                 let [a, b] = parents[..] else { return };
 
@@ -251,12 +322,6 @@ impl Graph {
 
             Op::Mul => {
                 let [a, b] = parents[..] else { return };
-
-                let mut da = Matrix::new(self.nodes[a].data.row, self.nodes[a].data.col);
-                let mut db = Matrix::new(self.nodes[b].data.row, self.nodes[b].data.col);
-
-                mat_mul(&mut da, &grad, &self.nodes[b].data, B8(1), B8(0), B8(0));
-                mat_mul(&mut db, &grad, &self.nodes[a].data, B8(1), B8(0), B8(0));
                 for i in 0..grad.data.len() {
                     self.nodes[a].grad.data[i] += grad.data[i] * self.nodes[b].data.data[i];
                     self.nodes[b].grad.data[i] += grad.data[i] * self.nodes[a].data.data[i];
@@ -300,6 +365,27 @@ impl Graph {
             }
         }
     }
+
+    fn topo_from(&self, start: TensorId) -> Vec<TensorId> {
+        let mut visited = vec![false; self.nodes.len()];
+        let mut stack = Vec::new();
+
+        fn dfs(g: &Graph, v: TensorId, visited: &mut Vec<bool>, stack: &mut Vec<TensorId>) {
+            if visited[v] {
+                return;
+            }
+            visited[v] = true;
+
+            for &p in &g.nodes[v].parents {
+                dfs(g, p, visited, stack);
+            }
+
+            stack.push(v);
+        }
+
+        dfs(self, start, &mut visited, &mut stack);
+        stack
+    }
 }
 
 fn topo_sort(adj_mat: &Vec<Vec<TensorId>>) -> Vec<TensorId> {
@@ -309,7 +395,7 @@ fn topo_sort(adj_mat: &Vec<Vec<TensorId>>) -> Vec<TensorId> {
 
     for i in 0..n {
         if !visited[i] {
-            find_topo_sort(i, &mut visited, &adj_mat, &mut stack);
+            find_topo_sort(i, &mut visited, adj_mat, &mut stack);
         }
     }
     let mut topo = Vec::new();
@@ -337,4 +423,16 @@ fn find_topo_sort(
     }
 
     stack.push_back(i);
+}
+
+pub fn mse(y_hat: &Matrix, y: &Matrix) -> f32 {
+    let size = y_hat.data.len();
+    if size == 0 {
+        return 0.0;
+    }
+    let mut mse = 0.0;
+    for i in 0..size {
+        mse += (y_hat.data[i] - y.data[i]).powi(2);
+    }
+    mse / 2.0 * size as f32
 }

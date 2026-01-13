@@ -13,7 +13,7 @@ fn draw_mnist_digit_color(m: &Matrix, idx: usize) {
             let col: u32 = 232 + (v * 24.0) as u32;
             print!("\x1b[48;5;{}m ", col);
         }
-        print!("\x1b[0m\n");
+        println!("\x1b[0m");
     }
 }
 

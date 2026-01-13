@@ -1,5 +1,4 @@
 pub mod matrix;
-pub mod model;
 pub mod tensor;
 pub mod types;
 
