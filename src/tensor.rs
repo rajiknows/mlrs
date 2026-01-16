@@ -19,6 +19,7 @@ pub enum Op {
     Sum,
     Mean,
     Log,
+    Neg,
 }
 
 pub type TensorId = usize;
@@ -80,6 +81,25 @@ impl Graph {
             req_grad: true,
         });
 
+        id
+    }
+
+    pub fn neg(&mut self, x: TensorId) -> TensorId {
+        // get the matrix and negate it and put it back to the graph
+        let matrix = &self.nodes[x].data;
+        let mut neg_mat = Matrix::new(matrix.row, matrix.col);
+        for i in 0..neg_mat.data.len() {
+            neg_mat.data[i] = -matrix.data[i];
+        }
+        let id = self.nodes.len();
+        self.nodes.push(Tensor {
+            id,
+            data: neg_mat,
+            grad: Matrix::new(matrix.row, matrix.col),
+            op: Op::Neg,
+            parents: vec![x],
+            req_grad: false,
+        });
         id
     }
 
