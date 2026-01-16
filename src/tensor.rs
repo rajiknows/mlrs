@@ -18,6 +18,7 @@ pub enum Op {
     MatMul,
     Sum,
     Mean,
+    Log,
 }
 
 pub type TensorId = usize;
@@ -101,6 +102,26 @@ impl Graph {
         id
     }
 
+    pub fn log(&mut self, a: TensorId) -> TensorId {
+        let ma = &self.nodes[a].data;
+
+        let mut out = ma.clone();
+        for x in &mut out.data {
+            *x = x.ln();
+        }
+
+        let id = self.nodes.len();
+        self.nodes.push(Tensor {
+            id,
+            data: out,
+            grad: Matrix::new(ma.row, ma.col),
+            op: Op::Log,
+            parents: vec![a],
+            req_grad: true,
+        });
+
+        id
+    }
     pub fn mul(&mut self, a: TensorId, b: TensorId) -> TensorId {
         let (ma, mb) = (&self.nodes[a].data, &self.nodes[b].data);
         assert_eq!(ma.row * ma.col, mb.row * mb.col);
@@ -176,6 +197,24 @@ impl Graph {
             req_grad: true,
         });
 
+        id
+    }
+
+    pub fn mul_scalar(&mut self, id: TensorId, x: f32) -> TensorId {
+        let ma = &self.nodes[id].data;
+        let mut out = Matrix::new(ma.row, ma.col);
+        for i in 0..ma.row {
+            out.data[i] = ma.data[i] * x;
+        }
+        let id = self.nodes.len();
+        self.nodes.push(Tensor {
+            id,
+            data: out,
+            grad: Matrix::new(1, 1),
+            op: Op::None,
+            parents: vec![id],
+            req_grad: false,
+        });
         id
     }
 
@@ -317,6 +356,14 @@ impl Graph {
                 for i in 0..grad.data.len() {
                     self.nodes[a].grad.data[i] += grad.data[i];
                     self.nodes[b].grad.data[i] -= grad.data[i];
+                }
+            }
+
+            Op::Log => {
+                let [a] = parents[..] else { return };
+
+                for i in 0..grad.data.len() {
+                    self.nodes[a].grad.data[i] += grad.data[i] / self.nodes[a].data.data[i];
                 }
             }
 
