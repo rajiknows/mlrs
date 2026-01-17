@@ -1,6 +1,5 @@
 use crate::matrix::{Matrix, load_mat};
 pub mod matrix;
-pub mod model;
 pub mod tensor;
 pub mod types;
 

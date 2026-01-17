@@ -2,7 +2,6 @@ use std::{fs::File, io::Read};
 
 use crate::types::{B8, B32};
 
-#[warn(dead_code)]
 #[derive(Debug, Clone)]
 pub struct Matrix {
     pub row: usize,
@@ -164,16 +163,16 @@ pub fn mat_mul(
     //                      n       n
     let tranpose = (transpose_a.0 << 1) | transpose_b.0;
     match tranpose {
-        0x00 => {
+        0b00 => {
             _mat_mul_nn(out, a, b);
         }
-        0x01 => {
+        0b01 => {
             _mat_mul_nt(out, a, b);
         }
-        0x10 => {
+        0b10 => {
             _mat_mul_tn(out, a, b);
         }
-        0x11 => {
+        0b11 => {
             _mat_mul_tt(out, a, b);
         }
         _ => {}
@@ -195,21 +194,31 @@ fn _mat_mul_nn(out: &mut Matrix, a: &Matrix, b: &Matrix) {
 }
 
 fn _mat_mul_nt(out: &mut Matrix, a: &Matrix, b: &Matrix) {
+    // A: (ar, ac)
+    // B: (br, bc) → Bᵀ: (bc, br)
+    // ac == bc
     for i in 0..out.row {
         for j in 0..out.col {
+            let mut sum = 0.0;
             for k in 0..a.col {
-                out.data[j + i * out.col] += a.data[k + i * a.col] * b.data[k + j * b.col];
+                sum += a.data[i * a.col + k] * b.data[j * b.col + k];
             }
+            out.data[i * out.col + j] += sum;
         }
     }
 }
 
 fn _mat_mul_tn(out: &mut Matrix, a: &Matrix, b: &Matrix) {
-    for k in 0..a.row {
-        for i in 0..out.row {
-            for j in 0..out.col {
-                out.data[j + i * out.col] += a.data[i + k * a.col] * b.data[j + k * b.col];
+    // out: (a.col, b.col)
+    for i in 0..out.row {
+        for j in 0..out.col {
+            let mut sum = 0.0;
+            for k in 0..a.row {
+                let a_t = a.data[k * a.col + i]; // Aᵀ[i,k]
+                let b_v = b.data[k * b.col + j]; // B[k,j]
+                sum += a_t * b_v;
             }
+            out.data[i * out.col + j] += sum;
         }
     }
 }
@@ -217,9 +226,13 @@ fn _mat_mul_tn(out: &mut Matrix, a: &Matrix, b: &Matrix) {
 fn _mat_mul_tt(out: &mut Matrix, a: &Matrix, b: &Matrix) {
     for i in 0..out.row {
         for j in 0..out.col {
-            for k in 0..a.col {
-                out.data[j + i * out.col] += a.data[i + k * a.col] * b.data[k + j * b.col];
+            let mut sum = 0.0;
+            for k in 0..a.row {
+                let a_t = a.data[k * a.col + i]; // Aᵀ[i,k] = A[k,i]
+                let b_t = b.data[j * b.col + k]; // Bᵀ[k,j] = B[j,k]
+                sum += a_t * b_t;
             }
+            out.data[i * out.col + j] += sum;
         }
     }
 }
