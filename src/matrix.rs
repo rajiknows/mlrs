@@ -110,6 +110,9 @@ pub fn mat_add(out: &mut Matrix, a: &Matrix, b: &Matrix) -> B32 {
     if a.row != b.row || a.col != b.col {
         return B32(0);
     }
+    if out.row != a.row || out.col != a.col {
+        return B32(0);
+    }
 
     for i in 0..out.data.len() {
         out.data[i] = a.data[i] + b.data[i];
@@ -153,6 +156,44 @@ pub fn mat_mul(
 
     if zero_out.get() {
         out.clear();
+    }
+
+    if b.col == 1 && !transpose_a.get() && !transpose_b.get() {
+        for i in 0..a.row {
+            let mut sum = 0.0;
+            let row = i * a.col;
+            for k in 0..a.col {
+                sum += a.data[row + k] * b.data[k];
+            }
+            if zero_out.get() {
+                out.data[i] = sum;
+            } else {
+                out.data[i] += sum;
+            }
+        }
+        return B32(1);
+    }
+
+    if !transpose_a.get() && !transpose_b.get() && b.col <= 16 {
+        for i in 0..a_rows {
+            let a_row = &a.data[i * a.col..(i + 1) * a.col];
+
+            for j in 0..b.col {
+                let mut sum = 0.0;
+
+                for k in 0..a.col {
+                    sum += a_row[k] * b.data[k * b.col + j];
+                }
+
+                let idx = i * out.col + j;
+                if zero_out.get() {
+                    out.data[idx] = sum;
+                } else {
+                    out.data[idx] += sum;
+                }
+            }
+        }
+        return B32(1);
     }
 
     // so now we got 4 cases

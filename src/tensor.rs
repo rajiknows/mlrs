@@ -69,6 +69,8 @@ impl Graph {
         let (ma, mb) = (&self.nodes[a].data, &self.nodes[b].data);
 
         let mut out = Matrix::new(ma.row, ma.col);
+        assert_eq!(ma.row, mb.row);
+        assert_eq!(ma.col, mb.col);
         mat_add(&mut out, ma, mb);
 
         let id = self.nodes.len();
@@ -82,6 +84,33 @@ impl Graph {
         });
 
         id
+    }
+
+    pub fn add_broadcast(&mut self, a: TensorId, b: TensorId) -> TensorId {
+        let (ma, mb) = (&self.nodes[a].data, &self.nodes[b].data);
+
+        // Check if b is a scalar (1x1)
+        if mb.row == 1 && mb.col == 1 {
+            let scalar = mb.data[0];
+            let mut out = ma.clone();
+            for x in &mut out.data {
+                *x += scalar;
+            }
+
+            let id = self.nodes.len();
+            self.nodes.push(Tensor {
+                id,
+                data: out,
+                grad: Matrix::new(ma.row, ma.col),
+                op: Op::Add,
+                parents: vec![a, b],
+                req_grad: true,
+            });
+            return id;
+        }
+
+        // Otherwise, use regular add
+        self.add(a, b)
     }
 
     pub fn neg(&mut self, x: TensorId) -> TensorId {
@@ -98,7 +127,7 @@ impl Graph {
             grad: Matrix::new(matrix.row, matrix.col),
             op: Op::Neg,
             parents: vec![x],
-            req_grad: false,
+            req_grad: true,
         });
         id
     }
@@ -126,8 +155,8 @@ impl Graph {
         let ma = &self.nodes[a].data;
 
         let mut out = ma.clone();
-        for x in &mut out.data {
-            *x = x.ln();
+        for v in &mut out.data {
+            *v = v.max(1e-7).ln();
         }
 
         let id = self.nodes.len();
@@ -219,25 +248,23 @@ impl Graph {
 
         id
     }
-
-    pub fn mul_scalar(&mut self, id: TensorId, x: f32) -> TensorId {
-        let ma = &self.nodes[id].data;
+    pub fn mul_scalar(&mut self, input_id: TensorId, x: f32) -> TensorId {
+        let ma = &self.nodes[input_id].data;
         let mut out = Matrix::new(ma.row, ma.col);
-        for i in 0..ma.row {
+        for i in 0..out.data.len() {
             out.data[i] = ma.data[i] * x;
         }
         let id = self.nodes.len();
         self.nodes.push(Tensor {
             id,
             data: out,
-            grad: Matrix::new(1, 1),
+            grad: Matrix::new(ma.row, ma.col),
             op: Op::None,
-            parents: vec![id],
+            parents: vec![input_id],
             req_grad: false,
         });
         id
     }
-
     pub fn mean(&mut self, x: TensorId) -> TensorId {
         let m = &self.nodes[x].data;
 
@@ -357,6 +384,14 @@ impl Graph {
                 }
             }
 
+            Op::Neg => {
+                let [a] = parents[..] else { return };
+
+                for i in 0..grad.data.len() {
+                    self.nodes[a].grad.data[i] -= grad.data[i]; // Derivative of -x is -1
+                }
+            }
+
             Op::Add => {
                 let [a, b] = parents[..] else { return };
 
@@ -364,9 +399,17 @@ impl Graph {
                 for i in 0..ga.data.len() {
                     ga.data[i] += grad.data[i];
                 }
+
+                // Handle scalar broadcasting
                 let gb = &mut self.nodes[b].grad;
-                for i in 0..gb.data.len() {
-                    gb.data[i] += grad.data[i];
+                if gb.row == 1 && gb.col == 1 {
+                    // Sum all gradients for scalar
+                    let sum: f32 = grad.data.iter().sum();
+                    gb.data[0] += sum;
+                } else {
+                    for i in 0..gb.data.len() {
+                        gb.data[i] += grad.data[i];
+                    }
                 }
             }
 
@@ -383,7 +426,15 @@ impl Graph {
                 let [a] = parents[..] else { return };
 
                 for i in 0..grad.data.len() {
-                    self.nodes[a].grad.data[i] += grad.data[i] / self.nodes[a].data.data[i];
+                    let val = self.nodes[a].data.data[i];
+                    if val.is_normal() && val > 0.0 {
+                        // Check for normal positive values
+                        self.nodes[a].grad.data[i] += grad.data[i] / val;
+                    } else if val > 0.0 {
+                        // Handle denormal numbers
+                        self.nodes[a].grad.data[i] += grad.data[i] / f32::max(val, 1e-8);
+                    }
+                    // For val <= 0, gradient is undefined, so skip
                 }
             }
 
@@ -497,9 +548,10 @@ pub fn mse(y_hat: &Matrix, y: &Matrix) -> f32 {
     if size == 0 {
         return 0.0;
     }
+    assert_eq!(y_hat.data.len(), y.data.len());
     let mut mse = 0.0;
     for i in 0..size {
         mse += (y_hat.data[i] - y.data[i]).powi(2);
     }
-    mse / 2.0 * size as f32
+    mse / size as f32
 }

@@ -19,7 +19,7 @@ fn draw_mnist_digit_color(m: &Matrix, idx: usize) {
 fn main() {
     println!("Hello, world!");
     let train_images = load_mat(60000, 784, "train_images.mat");
-    let test_images = load_mat(60000, 784, "test_images.mat");
+    // let test_images = load_mat(60000, 784, "test_images.mat");
     let mut train_labels = Matrix::new(60000, 10);
     let mut test_labels = Matrix::new(60000, 10);
     {

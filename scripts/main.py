@@ -24,7 +24,7 @@ test_images = test_images.astype(np.float32) / 255.0
 train_labels = train_labels.astype(np.float32)
 test_labels = test_labels.astype(np.float32)
 
-train_images.tofile("../scripts/train_images.mat")
+train_images.tofile("../train_images.mat")
 train_labels.tofile("../train_labels.mat")
 test_images.tofile("../test_images.mat")
 test_labels.tofile("../test_lables.mat")
