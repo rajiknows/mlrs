@@ -1,7 +1,6 @@
 use mlrs::{Graph, Matrix, matrix::load_mat};
 
 fn main() {
-    // Load MNIST (binary classification: 0 vs 1)
     let train_images = load_mat(60000, 784, "train_images.mat");
     let train_labels = load_mat(60000, 1, "train_labels.mat");
     let test_images = load_mat(10000, 784, "test_images.mat");

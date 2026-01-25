@@ -2,6 +2,7 @@ use crate::matrix::{Matrix, load_mat};
 pub mod matrix;
 pub mod tensor;
 pub mod types;
+pub mod ops;
 
 fn draw_mnist_digit_color(m: &Matrix, idx: usize) {
     let start = idx * 28 * 28;
