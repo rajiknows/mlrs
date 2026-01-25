@@ -1,5 +1,6 @@
 use crate::{backends::Backend, numeric::Numeric, tensor::Tensor};
 pub mod add;
+pub mod add_broadcast;
 pub mod none;
 pub mod sub;
 

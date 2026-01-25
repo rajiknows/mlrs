@@ -116,9 +116,402 @@ impl<T: Numeric, B: Backend<DType = T>> Graph<T, B> {
         id
     }
 
-    // pub fn mul_scaler(&mut self, a: TensorId, x: T) -> TensorId {
-    //     let node = &self.nodes[a];
+    pub fn add_broadcast(&mut self, a: TensorId, b: TensorId) -> TensorId {
+        let ma_shape = &self.nodes[a].shape;
+        let mb_shape = &self.nodes[b].shape;
+        let (ma, mb) = (&self.nodes[a].data, &self.nodes[b].data);
+
+        // Check if b is a scalar (1x1)
+        if ma_shape[0] == 1 && mb_shape[1] == 1 {
+            let scalar = mb[0];
+            let out = ma.iter().map(|x| *x * scalar).collect();
+
+            let id = self.nodes.len();
+            self.nodes.push(Tensor::new(
+                id,
+                out,
+                ma_shape.to_owned(),
+                Arc::new(ops::add_broadcast::AddBroadbast),
+                vec![a, b],
+                true,
+            ));
+            return id;
+        }
+
+        // Otherwise, use regular add
+        self.add(a, b)
+    }
+
+    pub fn neg(&mut self, x: TensorId) -> TensorId {
+        let out = B::neg(&self.nodes[x]);
+        let id = self.nodes.len();
+
+        self.nodes.push(Tensor::new(
+            id,
+            out.data,
+            out.shape,
+            Arc::new(ops::neg::Neg),
+            vec![x],
+            true,
+        ));
+        id
+    }
+
+    // pub fn sub(&mut self, a: TensorId, b: TensorId) -> TensorId {
+    //     let (ma, mb) = (&self.nodes[a].data, &self.nodes[b].data);
+    //
+    //     let mut out = Matrix::new(ma.row, ma.col);
+    //     mat_sub(&mut out, ma, mb);
+    //
+    //     let id = self.nodes.len();
+    //     self.nodes.push(Tensor {
+    //         id,
+    //         data: out,
+    //         grad: Matrix::new(ma.row, ma.col),
+    //         op: Op::Sub,
+    //         parents: vec![a, b],
+    //         req_grad: true,
+    //     });
+    //
+    //     id
     // }
+
+    pub fn log(&mut self, x: TensorId) -> TensorId {
+        let out = B::log(&self.nodes[x]);
+        let id = self.nodes.len();
+
+        self.nodes.push(Tensor::new(
+            id,
+            out.data,
+            out.shape,
+            Arc::new(ops::log::Log),
+            vec![x],
+            true,
+        ));
+        id
+    }
+
+    pub fn mul(&mut self, a: TensorId, b: TensorId) -> TensorId {
+        let out = B::mul(&self.nodes[a], &self.nodes[b]);
+        let id = self.nodes.len();
+
+        self.nodes.push(Tensor::new(
+            id,
+            out.data,
+            out.shape,
+            Arc::new(ops::mul::Mul),
+            vec![a, b],
+            true,
+        ));
+        id
+    }
+    pub fn relu(&mut self, x: TensorId) -> TensorId {
+        let m = &self.nodes[x].data;
+
+        let mut out = m.clone();
+        out.relu();
+
+        let id = self.nodes.len();
+        self.nodes.push(Tensor {
+            id,
+            data: out,
+            grad: Matrix::new(m.row, m.col),
+            op: Op::Relu,
+            parents: vec![x],
+            req_grad: true,
+        });
+
+        id
+    }
+
+    pub fn softmax(&mut self, x: TensorId) -> TensorId {
+        let m = &self.nodes[x].data;
+
+        let mut out = m.clone();
+        out.softmax();
+
+        let id = self.nodes.len();
+        self.nodes.push(Tensor {
+            id,
+            data: out,
+            grad: Matrix::new(m.row, m.col),
+            op: Op::SoftMax,
+            parents: vec![x],
+            req_grad: true,
+        });
+
+        id
+    }
+
+    // pub fn sum(&mut self, x: TensorId) -> TensorId {
+    //     let m = &self.nodes[x].data;
+    //
+    //     let mut out = Matrix::new(1, 1);
+    //     out.data[0] = m.sum();
+    //
+    //     let id = self.nodes.len();
+    //     self.nodes.push(Tensor {
+    //         id,
+    //         data: out,
+    //         grad: Matrix::new(1, 1),
+    //         op: Op::Sum,
+    //         parents: vec![x],
+    //         req_grad: true,
+    //     });
+    //
+    //     id
+    // }
+    //
+    // pub fn mul_scalar(&mut self, input_id: TensorId, x: f32) -> TensorId {
+    //     let ma = &self.nodes[input_id].data;
+    //     let mut out = Matrix::new(ma.row, ma.col);
+    //     for i in 0..out.data.len() {
+    //         out.data[i] = ma.data[i] * x;
+    //     }
+    //     let id = self.nodes.len();
+    //     self.nodes.push(Tensor {
+    //         id,
+    //         data: out,
+    //         grad: Matrix::new(ma.row, ma.col),
+    //         op: Op::None,
+    //         parents: vec![input_id],
+    //         req_grad: false,
+    //     });
+    //     id
+    // }
+
+    pub fn mean(&mut self, x: TensorId) -> TensorId {
+        let out = B::mean(&self.nodes[x]);
+        let id = self.nodes.len();
+
+        self.nodes.push(Tensor::new(
+            id,
+            out.data,
+            out.shape,
+            Arc::new(ops::mean::Mean),
+            vec![x],
+            true,
+        ));
+        id
+    }
+
+    pub fn matmul(&mut self, a: TensorId, b: TensorId) -> TensorId {
+        let out = B::matmul(&self.nodes[a], &self.nodes[b]);
+        let id = self.nodes.len();
+
+        self.nodes.push(Tensor::new(
+            id,
+            out.data,
+            out.shape,
+            Arc::new(ops::matmul::MatMul),
+            vec![a, b],
+            true,
+        ));
+        id
+    }
+
+    pub fn sigmoid(&mut self, x: TensorId) -> TensorId {
+        let out = B::sigmoid(&self.nodes[x]);
+        let id = self.nodes.len();
+
+        self.nodes.push(Tensor::new(
+            id,
+            out.data,
+            out.shape,
+            Arc::new(ops::sigmoid::Sigmoid),
+            vec![x],
+            true,
+        ));
+        id
+    }
+
+    pub fn backtrack(&mut self, loss: TensorId) {
+        for n in &mut self.nodes {
+            n.grad.fill(0.0);
+        }
+
+        // seed dL/dL = 1
+        self.nodes[loss].grad.data[0] = 1.0;
+
+        let topo = self.topo_from(loss);
+
+        // reverse topo: loss → leaves
+        for &id in topo.iter().rev() {
+            self.backward_node(id);
+        }
+    }
+
+    fn backward_node(&mut self, id: TensorId) {
+        let (op, parents, grad, out_data) = {
+            let n = &self.nodes[id];
+            (n.op, n.parents.clone(), n.grad.clone(), n.data.clone())
+        };
+
+        match op {
+            Op::MatMul => {
+                let [a, b] = parents[..] else { return };
+
+                let grad_z = &grad;
+                let a_data = &self.nodes[a].data;
+                let b_data = &self.nodes[b].data;
+
+                // dA = dZ · Bᵀ
+                let mut da = Matrix::new(a_data.row, a_data.col);
+                mat_mul(&mut da, grad_z, b_data, B8(1), B8(0), B8(1));
+
+                // dB = Aᵀ · dZ
+                let mut db = Matrix::new(b_data.row, b_data.col);
+                mat_mul(&mut db, a_data, grad_z, B8(1), B8(1), B8(0));
+
+                for i in 0..da.data.len() {
+                    self.nodes[a].grad.data[i] += da.data[i];
+                }
+                for i in 0..db.data.len() {
+                    self.nodes[b].grad.data[i] += db.data[i];
+                }
+            }
+            Op::Sum => {
+                let [a] = parents[..] else { return };
+                let g = grad.data[0];
+
+                for i in 0..self.nodes[a].grad.data.len() {
+                    self.nodes[a].grad.data[i] += g;
+                }
+            }
+
+            Op::Mean => {
+                let [a] = parents[..] else { return };
+                let scale = grad.data[0] / (self.nodes[a].data.row * self.nodes[a].data.col) as f32;
+
+                for i in 0..self.nodes[a].grad.data.len() {
+                    self.nodes[a].grad.data[i] += scale;
+                }
+            }
+
+            Op::Neg => {
+                let [a] = parents[..] else { return };
+
+                for i in 0..grad.data.len() {
+                    self.nodes[a].grad.data[i] -= grad.data[i]; // Derivative of -x is -1
+                }
+            }
+
+            Op::Add => {
+                let [a, b] = parents[..] else { return };
+
+                let ga = &mut self.nodes[a].grad;
+                for i in 0..ga.data.len() {
+                    ga.data[i] += grad.data[i];
+                }
+
+                // Handle scalar broadcasting
+                let gb = &mut self.nodes[b].grad;
+                if gb.row == 1 && gb.col == 1 {
+                    // Sum all gradients for scalar
+                    let sum: f32 = grad.data.iter().sum();
+                    gb.data[0] += sum;
+                } else {
+                    for i in 0..gb.data.len() {
+                        gb.data[i] += grad.data[i];
+                    }
+                }
+            }
+
+            Op::Sub => {
+                let [a, b] = parents[..] else { return };
+
+                for i in 0..grad.data.len() {
+                    self.nodes[a].grad.data[i] += grad.data[i];
+                    self.nodes[b].grad.data[i] -= grad.data[i];
+                }
+            }
+
+            Op::Log => {
+                let [a] = parents[..] else { return };
+
+                for i in 0..grad.data.len() {
+                    let val = self.nodes[a].data.data[i];
+                    if val.is_normal() && val > 0.0 {
+                        // Check for normal positive values
+                        self.nodes[a].grad.data[i] += grad.data[i] / val;
+                    } else if val > 0.0 {
+                        // Handle denormal numbers
+                        self.nodes[a].grad.data[i] += grad.data[i] / f32::max(val, 1e-8);
+                    }
+                    // For val <= 0, gradient is undefined, so skip
+                }
+            }
+
+            Op::Mul => {
+                let [a, b] = parents[..] else { return };
+                for i in 0..grad.data.len() {
+                    self.nodes[a].grad.data[i] += grad.data[i] * self.nodes[b].data.data[i];
+                    self.nodes[b].grad.data[i] += grad.data[i] * self.nodes[a].data.data[i];
+                }
+            }
+
+            Op::Relu => {
+                let [a] = parents[..] else { return };
+
+                for i in 0..grad.data.len() {
+                    if self.nodes[a].data.data[i] > 0.0 {
+                        self.nodes[a].grad.data[i] += grad.data[i];
+                    }
+                }
+            }
+
+            Op::Sigmoid => {
+                let [a] = parents[..] else { return };
+                for i in 0..grad.data.len() {
+                    let s = out_data.data[i];
+                    self.nodes[a].grad.data[i] += grad.data[i] * s * (1.0 - s);
+                }
+            }
+
+            _ => {}
+        }
+    }
+
+    pub fn zero_grad(&mut self) {
+        for n in &mut self.nodes {
+            n.grad.fill(0.0);
+        }
+    }
+
+    pub fn step(&mut self, lr: f32) {
+        for n in &mut self.nodes {
+            if n.req_grad {
+                for i in 0..n.data.data.len() {
+                    n.data.data[i] -= lr * n.grad.data[i];
+                }
+            }
+        }
+    }
+
+    fn topo_from(&self, start: TensorId) -> Vec<TensorId> {
+        let mut visited = vec![false; self.nodes.len()];
+        let mut stack = Vec::new();
+
+        fn dfs(g: &Graph, v: TensorId, visited: &mut Vec<bool>, stack: &mut Vec<TensorId>) {
+            if visited[v] {
+                return;
+            }
+            visited[v] = true;
+
+            for &p in &g.nodes[v].parents {
+                dfs(g, p, visited, stack);
+            }
+
+            stack.push(v);
+        }
+
+        dfs(self, start, &mut visited, &mut stack);
+        stack
+    }
+
+    pub fn mul_scaler(&mut self, a: TensorId, x: T) -> TensorId {
+        let node = &self.nodes[a];
+    }
 }
 
 // pub struct Graph {
@@ -140,6 +533,7 @@ impl<T: Numeric, B: Backend<DType = T>> Graph<T, B> {
 //         id
 //     }
 //
+//
 //     pub fn add(&mut self, a: TensorId, b: TensorId) -> TensorId {
 //         let (ma, mb) = (&self.nodes[a].data, &self.nodes[b].data);
 //
@@ -160,6 +554,7 @@ impl<T: Numeric, B: Backend<DType = T>> Graph<T, B> {
 //
 //         id
 //     }
+//
 //
 //     pub fn add_broadcast(&mut self, a: TensorId, b: TensorId) -> TensorId {
 //         let (ma, mb) = (&self.nodes[a].data, &self.nodes[b].data);
@@ -207,6 +602,7 @@ impl<T: Numeric, B: Backend<DType = T>> Graph<T, B> {
 //         id
 //     }
 //
+//
 //     pub fn sub(&mut self, a: TensorId, b: TensorId) -> TensorId {
 //         let (ma, mb) = (&self.nodes[a].data, &self.nodes[b].data);
 //
@@ -225,6 +621,7 @@ impl<T: Numeric, B: Backend<DType = T>> Graph<T, B> {
 //
 //         id
 //     }
+//
 //
 //     pub fn log(&mut self, a: TensorId) -> TensorId {
 //         let ma = &self.nodes[a].data;
@@ -246,6 +643,7 @@ impl<T: Numeric, B: Backend<DType = T>> Graph<T, B> {
 //
 //         id
 //     }
+//
 //     pub fn mul(&mut self, a: TensorId, b: TensorId) -> TensorId {
 //         let (ma, mb) = (&self.nodes[a].data, &self.nodes[b].data);
 //         assert_eq!(ma.row * ma.col, mb.row * mb.col);
@@ -323,6 +721,7 @@ impl<T: Numeric, B: Backend<DType = T>> Graph<T, B> {
 //
 //         id
 //     }
+//
 //     pub fn mul_scalar(&mut self, input_id: TensorId, x: f32) -> TensorId {
 //         let ma = &self.nodes[input_id].data;
 //         let mut out = Matrix::new(ma.row, ma.col);
@@ -340,6 +739,7 @@ impl<T: Numeric, B: Backend<DType = T>> Graph<T, B> {
 //         });
 //         id
 //     }
+//
 //     pub fn mean(&mut self, x: TensorId) -> TensorId {
 //         let m = &self.nodes[x].data;
 //
@@ -412,6 +812,7 @@ impl<T: Numeric, B: Backend<DType = T>> Graph<T, B> {
 //             self.backward_node(id);
 //         }
 //     }
+//
 //     fn backward_node(&mut self, id: TensorId) {
 //         let (op, parents, grad, out_data) = {
 //             let n = &self.nodes[id];
@@ -581,6 +982,7 @@ impl<T: Numeric, B: Backend<DType = T>> Graph<T, B> {
 //     }
 // }
 //
+//
 // fn topo_sort(adj_mat: &Vec<Vec<TensorId>>) -> Vec<TensorId> {
 //     let n = adj_mat.len();
 //     let mut stack: VecDeque<TensorId> = VecDeque::new();
@@ -617,6 +1019,7 @@ impl<T: Numeric, B: Backend<DType = T>> Graph<T, B> {
 //
 //     stack.push_back(i);
 // }
+//
 //
 // pub fn mse(y_hat: &Matrix, y: &Matrix) -> f32 {
 //     let size = y_hat.data.len();

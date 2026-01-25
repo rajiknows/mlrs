@@ -1,8 +1,4 @@
-use crate::{
-    backends::Backend,
-    numeric::{Numeric},
-    ops::{Operation},
-};
+use crate::{backends::Backend, numeric::Numeric, ops::Operation};
 
 pub struct Sub;
 
@@ -18,3 +14,4 @@ impl<T: Numeric, B: Backend<DType = T>> Operation<T, B> for Sub {
         todo!()
     }
 }
+

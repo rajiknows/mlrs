@@ -1,19 +1,106 @@
+use crate::{numeric::Numeric, tensor::Tensor};
+
 pub mod cpu;
 
 pub trait Backend {
-    type DType: crate::numeric::Numeric;
+    type DType: Numeric;
 
     fn add(
-        a: &crate::tensor::Tensor<Self::DType, Self>,
-        b: &crate::tensor::Tensor<Self::DType, Self>,
-    ) -> crate::tensor::Tensor<Self::DType, Self>
+        a: &Tensor<Self::DType, Self>,
+        b: &Tensor<Self::DType, Self>,
+    ) -> Tensor<Self::DType, Self>
     where
         Self: Sized;
+
     fn sub(
-        a: &crate::tensor::Tensor<Self::DType, Self>,
-        b: &crate::tensor::Tensor<Self::DType, Self>,
-    ) -> crate::tensor::Tensor<Self::DType, Self>
+        a: &Tensor<Self::DType, Self>,
+        b: &Tensor<Self::DType, Self>,
+    ) -> Tensor<Self::DType, Self>
     where
         Self: Sized;
-    // Add other backend operations here
+
+    fn mul(
+        a: &Tensor<Self::DType, Self>,
+        b: &Tensor<Self::DType, Self>,
+    ) -> Tensor<Self::DType, Self>
+    where
+        Self: Sized;
+
+    fn neg(a: &Tensor<Self::DType, Self>) -> Tensor<Self::DType, Self>
+    where
+        Self: Sized;
+
+    /* ---------- Matrix ops ---------- */
+
+    fn matmul(
+        a: &Tensor<Self::DType, Self>,
+        b: &Tensor<Self::DType, Self>,
+    ) -> Tensor<Self::DType, Self>
+    where
+        Self: Sized;
+
+    fn add_broadcast(
+        a: &Tensor<Self::DType, Self>,
+        b: &Tensor<Self::DType, Self>, // (1, D) or (1,1)
+    ) -> Tensor<Self::DType, Self>
+    where
+        Self: Sized;
+
+    /* ---------- Reductions ---------- */
+
+    fn sum(a: &Tensor<Self::DType, Self>) -> Tensor<Self::DType, Self>
+    where
+        Self: Sized;
+
+    fn mean(a: &Tensor<Self::DType, Self>) -> Tensor<Self::DType, Self>
+    where
+        Self: Sized;
+
+    /* ---------- Activations ---------- */
+
+    fn relu(a: &Tensor<Self::DType, Self>) -> Tensor<Self::DType, Self>
+    where
+        Self: Sized;
+
+    fn sigmoid(a: &Tensor<Self::DType, Self>) -> Tensor<Self::DType, Self>
+    where
+        Self: Sized;
+
+    fn softmax(a: &Tensor<Self::DType, Self>, dim: usize) -> Tensor<Self::DType, Self>
+    where
+        Self: Sized;
+
+    /* ---------- Math ops ---------- */
+
+    fn log(a: &Tensor<Self::DType, Self>) -> Tensor<Self::DType, Self>
+    where
+        Self: Sized;
+
+    fn exp(a: &Tensor<Self::DType, Self>) -> Tensor<Self::DType, Self>
+    where
+        Self: Sized;
+
+    /* ---------- Losses (CRITICAL) ---------- */
+
+    fn mse(
+        pred: &Tensor<Self::DType, Self>,
+        target: &Tensor<Self::DType, Self>,
+    ) -> Tensor<Self::DType, Self>
+    where
+        Self: Sized;
+
+    /// Numerically stable BCE (NO sigmoid inside user code)
+    fn bce_with_logits(
+        logits: &Tensor<Self::DType, Self>,
+        target: &Tensor<Self::DType, Self>,
+    ) -> Tensor<Self::DType, Self>
+    where
+        Self: Sized;
+
+    fn cross_entropy(
+        logits: &Tensor<Self::DType, Self>,
+        target: &Tensor<Self::DType, Self>, // class indices or one-hot
+    ) -> Tensor<Self::DType, Self>
+    where
+        Self: Sized;
 }

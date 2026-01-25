@@ -1,4 +1,4 @@
-use std::{fs::File, io::Read, ops};
+use std::{fs::File, io::Read};
 
 use rayon::{
     iter::{IndexedParallelIterator, ParallelIterator},
@@ -117,6 +117,7 @@ impl Matrix {
         }
         B32(1)
     }
+
     fn softmax_add_grad(&mut self, p: &Matrix) -> B32 {
         if self.row != p.row && self.col != p.col {
             return B32(0);
