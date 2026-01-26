@@ -2,6 +2,7 @@ use crate::backends::Backend;
 use crate::tensor::Tensor;
 
 use crate::ops;
+use crate::utils::determinant;
 use std::sync::Arc;
 
 pub struct CPUBackend;
@@ -146,6 +147,50 @@ impl Backend for CPUBackend {
         )
     }
 
+    fn sum_to_shape(
+        grad: &Tensor<Self::DType, Self>,
+        target_shape: &[usize],
+    ) -> Tensor<Self::DType, Self> {
+        let rows = grad.shape[0];
+        let cols = grad.shape[1];
+
+        match target_shape {
+            // (1, C)
+            [1, c] if *c == cols => {
+                let mut out = vec![0.0; cols];
+                for i in 0..rows {
+                    for j in 0..cols {
+                        out[j] += grad.data[i * cols + j];
+                    }
+                }
+
+                Tensor::new(
+                    0,
+                    out,
+                    vec![1, cols],
+                    Arc::new(ops::none::None),
+                    vec![],
+                    true,
+                )
+            }
+
+            // (1, 1)
+            [1, 1] => {
+                let sum = grad.data.iter().sum();
+                Tensor::new(
+                    0,
+                    vec![sum],
+                    vec![1, 1],
+                    Arc::new(ops::none::None),
+                    vec![],
+                    true,
+                )
+            }
+
+            _ => panic!("unsupported broadcast backward shape"),
+        }
+    }
+
     fn sum(a: &Tensor<Self::DType, Self>) -> Tensor<Self::DType, Self> {
         let s = a.data.iter().sum::<Self::DType>();
         Tensor::new(0, vec![s], vec![1], Arc::new(ops::none::None), vec![], true)
@@ -229,6 +274,22 @@ impl Backend for CPUBackend {
     }
 
     fn exp(a: &Tensor<Self::DType, Self>) -> Tensor<Self::DType, Self> {
+        let data = a.data.iter().map(|x| x.exp()).collect();
+        Tensor::new(
+            0,
+            data,
+            a.shape.clone(),
+            Arc::new(ops::none::None),
+            vec![],
+            true,
+        )
+    }
+
+    // TODO: fix this
+    fn inv(a: &Tensor<Self::DType, Self>) -> Tensor<Self::DType, Self> {
+        // first find determinant
+        let determinant = determinant(&a.data);
+        let adjugate = adjugate(&a.data);
         let data = a.data.iter().map(|x| x.exp()).collect();
         Tensor::new(
             0,

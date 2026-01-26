@@ -4,10 +4,10 @@ pub struct Add;
 
 impl<T: Numeric, B: Backend<DType = T>> Operation<T, B> for Add {
     fn forward(&self, inputs: &[&Tensor<T, B>]) -> Tensor<T, B> {
-        todo!()
+        B::add(inputs[0], inputs[1])
     }
 
-    fn backward(&self, output_grad: &Tensor<T, B>) -> Vec<Tensor<T, B>> {
-        todo!()
+    fn backward(&self, _inputs: &[&Tensor<T, B>], output_grad: &Tensor<T, B>) -> Vec<Tensor<T, B>> {
+        vec![output_grad.clone(), output_grad.clone()]
     }
 }

@@ -4,5 +4,6 @@ pub mod numeric;
 pub mod ops;
 pub mod tensor;
 pub mod types;
+pub mod utils;
 
 pub use matrix::Matrix;

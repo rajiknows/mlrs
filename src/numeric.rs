@@ -1,4 +1,4 @@
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use std::ops;
 
 pub trait Numeric:
@@ -24,4 +24,3 @@ impl Numeric for f64 {}
 impl Numeric for f32 {}
 impl Numeric for i32 {}
 impl Numeric for i64 {}
-

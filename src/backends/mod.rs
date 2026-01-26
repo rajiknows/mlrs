@@ -48,6 +48,13 @@ pub trait Backend {
 
     /* ---------- Reductions ---------- */
 
+    fn sum_to_shape(
+        grad: &Tensor<Self::DType, Self>,
+        target_shape: &[usize],
+    ) -> Tensor<Self::DType, Self>
+    where
+        Self: Sized;
+
     fn sum(a: &Tensor<Self::DType, Self>) -> Tensor<Self::DType, Self>
     where
         Self: Sized;
@@ -77,6 +84,10 @@ pub trait Backend {
         Self: Sized;
 
     fn exp(a: &Tensor<Self::DType, Self>) -> Tensor<Self::DType, Self>
+    where
+        Self: Sized;
+
+    fn inv(a: &Tensor<Self::DType, Self>) -> Tensor<Self::DType, Self>
     where
         Self: Sized;
 
