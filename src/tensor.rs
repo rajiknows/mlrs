@@ -1,4 +1,4 @@
-use std::{clone, sync::Arc};
+use std::{clone, default, sync::Arc};
 
 use crate::{
     backends::Backend,
@@ -8,7 +8,7 @@ use crate::{
 
 pub type TensorId = usize;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct NdimVector<T: Numeric> {
     pub data: Vec<T>,
     pub shape: Vec<usize>,
@@ -29,19 +29,21 @@ impl<T: Numeric, B: Backend<DType = T>> Tensor<T, B> {
     pub fn new(
         id: TensorId,
         data: Vec<T>,
-        shape: Vec<usize>,
         op: Arc<dyn Operation<T, B>>,
+        shape: Vec<usize>,
         parents: Vec<TensorId>,
         req_grad: bool,
     ) -> Self {
         let strides = Self::calculate_strides(&shape);
-        let data_len = data.len();
+
         Self {
             id,
-            data,
-            grad: vec![T::default(); data_len],
-            shape,
-            stride: strides,
+            data: NdimVector {
+                data,
+                shape,
+                stride: strides,
+            },
+            grad: NdimVector::default(),
             op,
             parents,
             req_grad,
@@ -53,12 +55,14 @@ impl<T: Numeric, B: Backend<DType = T>> Tensor<T, B> {
         let data_len = data.len();
         Self {
             id,
-            data,
-            grad: vec![T::default(); data_len],
+            data: NdimVector {
+                data,
+                shape,
+                stride: strides,
+            },
+            grad: NdimVector::default(),
             op: Arc::new(ops::none::None),
             parents: Vec::new(),
-            shape,
-            stride: strides,
             req_grad,
         }
     }
