@@ -30,6 +30,10 @@ pub trait Backend {
     where
         Self: Sized;
 
+    fn fill(a: &Tensor<Self::DType, Self>, x: Self::DType) -> Tensor<Self::DType, Self>
+    where
+        Self: Sized;
+
     /* ---------- Matrix ops ---------- */
 
     fn matmul(

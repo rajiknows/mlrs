@@ -102,9 +102,9 @@ impl<T: Numeric, B: Backend<DType = T>> Graph<T, B> {
         let id = self.nodes.len();
         self.nodes.push(Tensor::new(
             id,
-            new_tensor.data,
-            new_tensor.shape,
+            new_tensor.data.data,
             Arc::new(ops::add::Add),
+            new_tensor.data.shape,
             vec![a, b],
             true,
         ));
@@ -117,9 +117,9 @@ impl<T: Numeric, B: Backend<DType = T>> Graph<T, B> {
         let id = self.nodes.len();
         self.nodes.push(Tensor::new(
             id,
-            new_tensor.data,
-            new_tensor.shape,
+            new_tensor.data.data,
             Arc::new(ops::sub::Sub),
+            new_tensor.data.shape,
             vec![a, b],
             true,
         ));
@@ -127,21 +127,21 @@ impl<T: Numeric, B: Backend<DType = T>> Graph<T, B> {
     }
 
     pub fn add_broadcast(&mut self, a: TensorId, b: TensorId) -> TensorId {
-        let ma_shape = &self.nodes[a].shape;
-        let mb_shape = &self.nodes[b].shape;
+        let ma_shape = &self.nodes[a].data.shape;
+        let mb_shape = &self.nodes[b].data.shape;
         let (ma, mb) = (&self.nodes[a].data, &self.nodes[b].data);
 
         // Check if b is a scalar (1x1)
         if ma_shape[0] == 1 && mb_shape[1] == 1 {
-            let scalar = mb[0];
-            let out = ma.iter().map(|x| *x * scalar).collect();
+            let scalar = mb.data[0];
+            let out = ma.data.iter().map(|x| *x * scalar).collect();
 
             let id = self.nodes.len();
             self.nodes.push(Tensor::new(
                 id,
                 out,
-                ma_shape.to_owned(),
                 Arc::new(ops::add_broadcast::AddBroadbast),
+                ma_shape.to_owned(),
                 vec![a, b],
                 true,
             ));
@@ -158,9 +158,9 @@ impl<T: Numeric, B: Backend<DType = T>> Graph<T, B> {
 
         self.nodes.push(Tensor::new(
             id,
-            out.data,
-            out.shape,
+            out.data.data,
             Arc::new(ops::neg::Neg),
+            out.data.shape,
             vec![x],
             true,
         ));
@@ -173,9 +173,9 @@ impl<T: Numeric, B: Backend<DType = T>> Graph<T, B> {
 
         self.nodes.push(Tensor::new(
             id,
-            out.data,
-            out.shape,
+            out.data.data,
             Arc::new(ops::log::Log),
+            out.data.shape,
             vec![x],
             true,
         ));
@@ -188,9 +188,9 @@ impl<T: Numeric, B: Backend<DType = T>> Graph<T, B> {
 
         self.nodes.push(Tensor::new(
             id,
-            out.data,
-            out.shape,
+            out.data.data,
             Arc::new(ops::mul::Mul),
+            out.data.shape,
             vec![a, b],
             true,
         ));
@@ -200,7 +200,6 @@ impl<T: Numeric, B: Backend<DType = T>> Graph<T, B> {
         let m = &self.nodes[x].data;
 
         let mut out = m.clone();
-        out.relu();
 
         let id = self.nodes.len();
         self.nodes.push(Tensor {
@@ -277,9 +276,9 @@ impl<T: Numeric, B: Backend<DType = T>> Graph<T, B> {
 
         self.nodes.push(Tensor::new(
             id,
-            out.data,
-            out.shape,
+            out.data.data,
             Arc::new(ops::mean::Mean),
+            out.data.shape,
             vec![x],
             true,
         ));
@@ -292,9 +291,9 @@ impl<T: Numeric, B: Backend<DType = T>> Graph<T, B> {
 
         self.nodes.push(Tensor::new(
             id,
-            out.data,
-            out.shape,
+            out.data.data,
             Arc::new(ops::matmul::MatMul),
+            out.data.shape,
             vec![a, b],
             true,
         ));
@@ -307,9 +306,9 @@ impl<T: Numeric, B: Backend<DType = T>> Graph<T, B> {
 
         self.nodes.push(Tensor::new(
             id,
-            out.data,
-            out.shape,
-            Arc::new(ops::sigmoid::Sigmoid),
+            out.data.data,
+            Arc::new(ops::Sigmoid),
+            out.data.shape,
             vec![x],
             true,
         ));
@@ -318,7 +317,7 @@ impl<T: Numeric, B: Backend<DType = T>> Graph<T, B> {
 
     pub fn backtrack(&mut self, loss: TensorId) {
         for n in &mut self.nodes {
-            n.grad.fill(0.0);
+            n = B::fill(n.grad, 0.0);
         }
 
         // seed dL/dL = 1
