@@ -1,4 +1,4 @@
-use std::{clone, default, sync::Arc};
+use std::sync::Arc;
 
 use crate::{
     backends::Backend,
@@ -84,7 +84,11 @@ pub struct Graph<T: Numeric, B: Backend<DType = T>> {
     pub nodes: Vec<Tensor<T, B>>,
 }
 
-impl<T: Numeric, B: Backend<DType = T>> Graph<T, B> {
+impl<T, B> Graph<T, B>
+where
+    T: Numeric,
+    B: Backend<DType = T>,
+{
     pub fn new() -> Self {
         Self { nodes: Vec::new() }
     }
@@ -189,49 +193,50 @@ impl<T: Numeric, B: Backend<DType = T>> Graph<T, B> {
         self.nodes.push(Tensor::new(
             id,
             out.data.data,
-            Arc::new(ops::mul::Mul),
+            Arc::new(ops::Mul),
             out.data.shape,
             vec![a, b],
             true,
         ));
         id
     }
-    pub fn relu(&mut self, x: TensorId) -> TensorId {
-        let m = &self.nodes[x].data;
 
-        let mut out = m.clone();
+    // pub fn relu(&mut self, x: TensorId) -> TensorId {
+    //     let m = &self.nodes[x].data;
+    //
+    //     let mut out = m.clone();
+    //
+    //     let id = self.nodes.len();
+    //     self.nodes.push(Tensor {
+    //         id,
+    //         data: out,
+    //         grad: Matrix::new(m.row, m.col),
+    //         op: Op::Relu,
+    //         parents: vec![x],
+    //         req_grad: true,
+    //     });
+    //
+    //     id
+    // }
 
-        let id = self.nodes.len();
-        self.nodes.push(Tensor {
-            id,
-            data: out,
-            grad: Matrix::new(m.row, m.col),
-            op: Op::Relu,
-            parents: vec![x],
-            req_grad: true,
-        });
-
-        id
-    }
-
-    pub fn softmax(&mut self, x: TensorId) -> TensorId {
-        let m = &self.nodes[x].data;
-
-        let mut out = m.clone();
-        out.softmax();
-
-        let id = self.nodes.len();
-        self.nodes.push(Tensor {
-            id,
-            data: out,
-            grad: Matrix::new(m.row, m.col),
-            op: Op::SoftMax,
-            parents: vec![x],
-            req_grad: true,
-        });
-
-        id
-    }
+    // pub fn softmax(&mut self, x: TensorId) -> TensorId {
+    //     let m = &self.nodes[x].data;
+    //
+    //     let mut out = m.clone();
+    //     out.softmax();
+    //
+    //     let id = self.nodes.len();
+    //     self.nodes.push(Tensor {
+    //         id,
+    //         data: out,
+    //         grad: Matrix::new(m.row, m.col),
+    //         op: Op::SoftMax,
+    //         parents: vec![x],
+    //         req_grad: true,
+    //     });
+    //
+    //     id
+    // }
 
     // pub fn sum(&mut self, x: TensorId) -> TensorId {
     //     let m = &self.nodes[x].data;
@@ -277,7 +282,7 @@ impl<T: Numeric, B: Backend<DType = T>> Graph<T, B> {
         self.nodes.push(Tensor::new(
             id,
             out.data.data,
-            Arc::new(ops::mean::Mean),
+            Arc::new(ops::Mean),
             out.data.shape,
             vec![x],
             true,
@@ -337,134 +342,134 @@ impl<T: Numeric, B: Backend<DType = T>> Graph<T, B> {
             (n.op, n.parents.clone(), n.grad.clone(), n.data.clone())
         };
 
-        match op {
-            Op::MatMul => {
-                let [a, b] = parents[..] else { return };
-
-                let grad_z = &grad;
-                let a_data = &self.nodes[a].data;
-                let b_data = &self.nodes[b].data;
-
-                // dA = dZ · Bᵀ
-                let mut da = Matrix::new(a_data.row, a_data.col);
-                mat_mul(&mut da, grad_z, b_data, B8(1), B8(0), B8(1));
-
-                // dB = Aᵀ · dZ
-                let mut db = Matrix::new(b_data.row, b_data.col);
-                mat_mul(&mut db, a_data, grad_z, B8(1), B8(1), B8(0));
-
-                for i in 0..da.data.len() {
-                    self.nodes[a].grad.data[i] += da.data[i];
-                }
-                for i in 0..db.data.len() {
-                    self.nodes[b].grad.data[i] += db.data[i];
-                }
-            }
-            Op::Sum => {
-                let [a] = parents[..] else { return };
-                let g = grad.data[0];
-
-                for i in 0..self.nodes[a].grad.data.len() {
-                    self.nodes[a].grad.data[i] += g;
-                }
-            }
-
-            Op::Mean => {
-                let [a] = parents[..] else { return };
-                let scale = grad.data[0] / (self.nodes[a].data.row * self.nodes[a].data.col) as f32;
-
-                for i in 0..self.nodes[a].grad.data.len() {
-                    self.nodes[a].grad.data[i] += scale;
-                }
-            }
-
-            Op::Neg => {
-                let [a] = parents[..] else { return };
-
-                for i in 0..grad.data.len() {
-                    self.nodes[a].grad.data[i] -= grad.data[i]; // Derivative of -x is -1
-                }
-            }
-
-            Op::Add => {
-                let [a, b] = parents[..] else { return };
-
-                let ga = &mut self.nodes[a].grad;
-                for i in 0..ga.data.len() {
-                    ga.data[i] += grad.data[i];
-                }
-
-                // Handle scalar broadcasting
-                let gb = &mut self.nodes[b].grad;
-                if gb.row == 1 && gb.col == 1 {
-                    // Sum all gradients for scalar
-                    let sum: f32 = grad.data.iter().sum();
-                    gb.data[0] += sum;
-                } else {
-                    for i in 0..gb.data.len() {
-                        gb.data[i] += grad.data[i];
-                    }
-                }
-            }
-
-            Op::Sub => {
-                let [a, b] = parents[..] else { return };
-
-                for i in 0..grad.data.len() {
-                    self.nodes[a].grad.data[i] += grad.data[i];
-                    self.nodes[b].grad.data[i] -= grad.data[i];
-                }
-            }
-
-            Op::Log => {
-                let [a] = parents[..] else { return };
-
-                for i in 0..grad.data.len() {
-                    let val = self.nodes[a].data.data[i];
-                    if val.is_normal() && val > 0.0 {
-                        // Check for normal positive values
-                        self.nodes[a].grad.data[i] += grad.data[i] / val;
-                    } else if val > 0.0 {
-                        // Handle denormal numbers
-                        self.nodes[a].grad.data[i] += grad.data[i] / f32::max(val, 1e-8);
-                    }
-                    // For val <= 0, gradient is undefined, so skip
-                }
-            }
-
-            Op::Mul => {
-                let [a, b] = parents[..] else { return };
-                for i in 0..grad.data.len() {
-                    self.nodes[a].grad.data[i] += grad.data[i] * self.nodes[b].data.data[i];
-                    self.nodes[b].grad.data[i] += grad.data[i] * self.nodes[a].data.data[i];
-                }
-            }
-
-            Op::Relu => {
-                let [a] = parents[..] else { return };
-
-                for i in 0..grad.data.len() {
-                    if self.nodes[a].data.data[i] > 0.0 {
-                        self.nodes[a].grad.data[i] += grad.data[i];
-                    }
-                }
-            }
-
-            Op::Sigmoid => {
-                let [a] = parents[..] else { return };
-                for i in 0..grad.data.len() {
-                    let s = out_data.data[i];
-                    self.nodes[a].grad.data[i] += grad.data[i] * s * (1.0 - s);
-                }
-            }
-
-            _ => {}
-        }
+        // match op {
+        //     Op::MatMul => {
+        //         let [a, b] = parents[..] else { return };
+        //
+        //         let grad_z = &grad;
+        //         let a_data = &self.nodes[a].data;
+        //         let b_data = &self.nodes[b].data;
+        //
+        //         // dA = dZ · Bᵀ
+        //         let mut da = Matrix::new(a_data.row, a_data.col);
+        //         mat_mul(&mut da, grad_z, b_data, B8(1), B8(0), B8(1));
+        //
+        //         // dB = Aᵀ · dZ
+        //         let mut db = Matrix::new(b_data.row, b_data.col);
+        //         mat_mul(&mut db, a_data, grad_z, B8(1), B8(1), B8(0));
+        //
+        //         for i in 0..da.data.len() {
+        //             self.nodes[a].grad.data[i] += da.data[i];
+        //         }
+        //         for i in 0..db.data.len() {
+        //             self.nodes[b].grad.data[i] += db.data[i];
+        //         }
+        //     }
+        //     Op::Sum => {
+        //         let [a] = parents[..] else { return };
+        //         let g = grad.data[0];
+        //
+        //         for i in 0..self.nodes[a].grad.data.len() {
+        //             self.nodes[a].grad.data[i] += g;
+        //         }
+        //     }
+        //
+        //     Op::Mean => {
+        //         let [a] = parents[..] else { return };
+        //         let scale = grad.data[0] / (self.nodes[a].data.row * self.nodes[a].data.col) as f32;
+        //
+        //         for i in 0..self.nodes[a].grad.data.len() {
+        //             self.nodes[a].grad.data[i] += scale;
+        //         }
+        //     }
+        //
+        //     Op::Neg => {
+        //         let [a] = parents[..] else { return };
+        //
+        //         for i in 0..grad.data.len() {
+        //             self.nodes[a].grad.data[i] -= grad.data[i]; // Derivative of -x is -1
+        //         }
+        //     }
+        //
+        //     Op::Add => {
+        //         let [a, b] = parents[..] else { return };
+        //
+        //         let ga = &mut self.nodes[a].grad;
+        //         for i in 0..ga.data.len() {
+        //             ga.data[i] += grad.data[i];
+        //         }
+        //
+        //         // Handle scalar broadcasting
+        //         let gb = &mut self.nodes[b].grad;
+        //         if gb.row == 1 && gb.col == 1 {
+        //             // Sum all gradients for scalar
+        //             let sum: f32 = grad.data.iter().sum();
+        //             gb.data[0] += sum;
+        //         } else {
+        //             for i in 0..gb.data.len() {
+        //                 gb.data[i] += grad.data[i];
+        //             }
+        //         }
+        //     }
+        //
+        //     Op::Sub => {
+        //         let [a, b] = parents[..] else { return };
+        //
+        //         for i in 0..grad.data.len() {
+        //             self.nodes[a].grad.data[i] += grad.data[i];
+        //             self.nodes[b].grad.data[i] -= grad.data[i];
+        //         }
+        //     }
+        //
+        //     Op::Log => {
+        //         let [a] = parents[..] else { return };
+        //
+        //         for i in 0..grad.data.len() {
+        //             let val = self.nodes[a].data.data[i];
+        //             if val.is_normal() && val > 0.0 {
+        //                 // Check for normal positive values
+        //                 self.nodes[a].grad.data[i] += grad.data[i] / val;
+        //             } else if val > 0.0 {
+        //                 // Handle denormal numbers
+        //                 self.nodes[a].grad.data[i] += grad.data[i] / f32::max(val, 1e-8);
+        //             }
+        //             // For val <= 0, gradient is undefined, so skip
+        //         }
+        //     }
+        //
+        //     Op::Mul => {
+        //         let [a, b] = parents[..] else { return };
+        //         for i in 0..grad.data.len() {
+        //             self.nodes[a].grad.data[i] += grad.data[i] * self.nodes[b].data.data[i];
+        //             self.nodes[b].grad.data[i] += grad.data[i] * self.nodes[a].data.data[i];
+        //         }
+        //     }
+        //
+        //     Op::Relu => {
+        //         let [a] = parents[..] else { return };
+        //
+        //         for i in 0..grad.data.len() {
+        //             if self.nodes[a].data.data[i] > 0.0 {
+        //                 self.nodes[a].grad.data[i] += grad.data[i];
+        //             }
+        //         }
+        //     }
+        //
+        //     Op::Sigmoid => {
+        //         let [a] = parents[..] else { return };
+        //         for i in 0..grad.data.len() {
+        //             let s = out_data.data[i];
+        //             self.nodes[a].grad.data[i] += grad.data[i] * s * (1.0 - s);
+        //         }
+        //     }
+        //
+        //     _ => {}
+        // }
     }
 
     pub fn zero_grad(&mut self) {
         for n in &mut self.nodes {
-            n.grad.fill(0.0);
+            B::fill(n, B::DType::zero());
         }
     }
 
