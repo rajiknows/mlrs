@@ -261,6 +261,7 @@ name = "mlrs"
 version = "0.1.0"
 dependencies = [
  "criterion",
+ "num-traits",
  "rand",
  "rayon",
  "serde",

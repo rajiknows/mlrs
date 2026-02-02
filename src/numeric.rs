@@ -1,4 +1,5 @@
-use serde::{Serialize, de::DeserializeOwned};
+use num_traits::cast::FromPrimitive;
+use serde::{de::DeserializeOwned, Serialize};
 use std::ops;
 
 pub trait Numeric:
@@ -17,6 +18,7 @@ pub trait Numeric:
     + Default
     + Serialize
     + DeserializeOwned
+    + FromPrimitive
 {
     fn one() -> Self;
     fn is_zero(&self) -> bool;
@@ -25,7 +27,11 @@ pub trait Numeric:
 
 impl Numeric for f64 {
     fn is_zero(&self) -> bool {
-        if *self == f64::zero() { true } else { false }
+        if *self == f64::zero() {
+            true
+        } else {
+            false
+        }
     }
     fn one() -> Self {
         1.0
@@ -36,7 +42,11 @@ impl Numeric for f64 {
 }
 impl Numeric for f32 {
     fn is_zero(&self) -> bool {
-        if *self == f32::zero() { true } else { false }
+        if *self == f32::zero() {
+            true
+        } else {
+            false
+        }
     }
     fn one() -> Self {
         1.0
@@ -47,7 +57,11 @@ impl Numeric for f32 {
 }
 impl Numeric for i32 {
     fn is_zero(&self) -> bool {
-        if *self == i32::zero() { true } else { false }
+        if *self == i32::zero() {
+            true
+        } else {
+            false
+        }
     }
     fn one() -> Self {
         1
@@ -58,7 +72,11 @@ impl Numeric for i32 {
 }
 impl Numeric for i64 {
     fn is_zero(&self) -> bool {
-        if *self == i64::zero() { true } else { false }
+        if *self == i64::zero() {
+            true
+        } else {
+            false
+        }
     }
     fn one() -> Self {
         1

@@ -1,8 +1,11 @@
 use crate::matrix::{Matrix, load_mat};
+pub mod backends;
 pub mod matrix;
+pub mod numeric;
+pub mod ops;
 pub mod tensor;
 pub mod types;
-pub mod ops;
+pub mod utils;
 
 fn draw_mnist_digit_color(m: &Matrix, idx: usize) {
     let start = idx * 28 * 28;

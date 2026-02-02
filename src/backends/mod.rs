@@ -2,7 +2,7 @@ use crate::{numeric::Numeric, tensor::Tensor};
 
 pub mod cpu;
 
-pub trait Backend {
+pub trait Backend: Clone {
     type DType: Numeric;
 
     fn add(
@@ -26,11 +26,26 @@ pub trait Backend {
     where
         Self: Sized;
 
+    fn div_scalar(a: &Tensor<Self::DType, Self>, scalar: f32) -> Tensor<Self::DType, Self>
+    where
+        Self: Sized;
+
+    fn sub_scalar(a: &Tensor<Self::DType, Self>, scalar: f32) -> Tensor<Self::DType, Self>
+    where
+        Self: Sized;
+
     fn neg(a: &Tensor<Self::DType, Self>) -> Tensor<Self::DType, Self>
     where
         Self: Sized;
 
     fn fill(a: &Tensor<Self::DType, Self>, x: Self::DType) -> Tensor<Self::DType, Self>
+    where
+        Self: Sized;
+
+    fn broadcast(
+        a: &Tensor<Self::DType, Self>,
+        shape: &Vec<usize>,
+    ) -> Tensor<Self::DType, Self>
     where
         Self: Sized;
 
@@ -40,6 +55,10 @@ pub trait Backend {
         a: &Tensor<Self::DType, Self>,
         b: &Tensor<Self::DType, Self>,
     ) -> Tensor<Self::DType, Self>
+    where
+        Self: Sized;
+
+    fn t(a: &Tensor<Self::DType, Self>) -> Tensor<Self::DType, Self>
     where
         Self: Sized;
 
@@ -70,6 +89,10 @@ pub trait Backend {
     /* ---------- Activations ---------- */
 
     fn relu(a: &Tensor<Self::DType, Self>) -> Tensor<Self::DType, Self>
+    where
+        Self: Sized;
+
+    fn gt(a: &Tensor<Self::DType, Self>, scalar: f32) -> Tensor<Self::DType, Self>
     where
         Self: Sized;
 

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{
+use super::{
     backends::Backend,
     numeric::Numeric,
     ops::{self, Operation},
@@ -52,7 +52,6 @@ impl<T: Numeric, B: Backend<DType = T>> Tensor<T, B> {
 
     pub fn leaf(id: TensorId, data: Vec<T>, shape: Vec<usize>, req_grad: bool) -> Self {
         let strides = Self::calculate_strides(&shape);
-        let data_len = data.len();
         Self {
             id,
             data: NdimVector {
@@ -61,7 +60,7 @@ impl<T: Numeric, B: Backend<DType = T>> Tensor<T, B> {
                 stride: strides,
             },
             grad: NdimVector::default(),
-            op: Arc::new(ops::none::None),
+            op: Arc::new(ops::NoOp),
             parents: Vec::new(),
             req_grad,
         }
@@ -77,6 +76,10 @@ impl<T: Numeric, B: Backend<DType = T>> Tensor<T, B> {
         }
 
         strides
+    }
+
+    pub fn t(&self) -> Self {
+        B::t(self)
     }
 }
 
@@ -107,7 +110,7 @@ where
         self.nodes.push(Tensor::new(
             id,
             new_tensor.data.data,
-            Arc::new(ops::add::Add),
+            Arc::new(ops::Add),
             new_tensor.data.shape,
             vec![a, b],
             true,
@@ -122,7 +125,7 @@ where
         self.nodes.push(Tensor::new(
             id,
             new_tensor.data.data,
-            Arc::new(ops::sub::Sub),
+            Arc::new(ops::Sub),
             new_tensor.data.shape,
             vec![a, b],
             true,
@@ -136,7 +139,7 @@ where
         let (ma, mb) = (&self.nodes[a].data, &self.nodes[b].data);
 
         // Check if b is a scalar (1x1)
-        if ma_shape[0] == 1 && mb_shape[1] == 1 {
+        if mb_shape[0] == 1 && mb_shape[1] == 1 {
             let scalar = mb.data[0];
             let out = ma.data.iter().map(|x| *x * scalar).collect();
 
@@ -144,7 +147,7 @@ where
             self.nodes.push(Tensor::new(
                 id,
                 out,
-                Arc::new(ops::add_broadcast::AddBroadbast),
+                Arc::new(ops::AddBroadcast),
                 ma_shape.to_owned(),
                 vec![a, b],
                 true,
@@ -163,7 +166,7 @@ where
         self.nodes.push(Tensor::new(
             id,
             out.data.data,
-            Arc::new(ops::neg::Neg),
+            Arc::new(ops::Neg),
             out.data.shape,
             vec![x],
             true,
@@ -178,7 +181,7 @@ where
         self.nodes.push(Tensor::new(
             id,
             out.data.data,
-            Arc::new(ops::log::Log),
+            Arc::new(ops::Log),
             out.data.shape,
             vec![x],
             true,
@@ -200,80 +203,6 @@ where
         ));
         id
     }
-
-    // pub fn relu(&mut self, x: TensorId) -> TensorId {
-    //     let m = &self.nodes[x].data;
-    //
-    //     let mut out = m.clone();
-    //
-    //     let id = self.nodes.len();
-    //     self.nodes.push(Tensor {
-    //         id,
-    //         data: out,
-    //         grad: Matrix::new(m.row, m.col),
-    //         op: Op::Relu,
-    //         parents: vec![x],
-    //         req_grad: true,
-    //     });
-    //
-    //     id
-    // }
-
-    // pub fn softmax(&mut self, x: TensorId) -> TensorId {
-    //     let m = &self.nodes[x].data;
-    //
-    //     let mut out = m.clone();
-    //     out.softmax();
-    //
-    //     let id = self.nodes.len();
-    //     self.nodes.push(Tensor {
-    //         id,
-    //         data: out,
-    //         grad: Matrix::new(m.row, m.col),
-    //         op: Op::SoftMax,
-    //         parents: vec![x],
-    //         req_grad: true,
-    //     });
-    //
-    //     id
-    // }
-
-    // pub fn sum(&mut self, x: TensorId) -> TensorId {
-    //     let m = &self.nodes[x].data;
-    //
-    //     let mut out = Matrix::new(1, 1);
-    //     out.data[0] = m.sum();
-    //
-    //     let id = self.nodes.len();
-    //     self.nodes.push(Tensor {
-    //         id,
-    //         data: out,
-    //         grad: Matrix::new(1, 1),
-    //         op: Op::Sum,
-    //         parents: vec![x],
-    //         req_grad: true,
-    //     });
-    //
-    //     id
-    // }
-    //
-    // pub fn mul_scalar(&mut self, input_id: TensorId, x: f32) -> TensorId {
-    //     let ma = &self.nodes[input_id].data;
-    //     let mut out = Matrix::new(ma.row, ma.col);
-    //     for i in 0..out.data.len() {
-    //         out.data[i] = ma.data[i] * x;
-    //     }
-    //     let id = self.nodes.len();
-    //     self.nodes.push(Tensor {
-    //         id,
-    //         data: out,
-    //         grad: Matrix::new(ma.row, ma.col),
-    //         op: Op::None,
-    //         parents: vec![input_id],
-    //         req_grad: false,
-    //     });
-    //     id
-    // }
 
     pub fn mean(&mut self, x: TensorId) -> TensorId {
         let out = B::mean(&self.nodes[x]);
@@ -297,7 +226,7 @@ where
         self.nodes.push(Tensor::new(
             id,
             out.data.data,
-            Arc::new(ops::matmul::MatMul),
+            Arc::new(ops::MatMul),
             out.data.shape,
             vec![a, b],
             true,
@@ -322,11 +251,16 @@ where
 
     pub fn backtrack(&mut self, loss: TensorId) {
         for n in &mut self.nodes {
-            n = B::fill(n.grad, 0.0);
+            let grad_data = vec![T::zero(); n.data.data.len()];
+            n.grad = NdimVector {
+                data: grad_data,
+                shape: n.data.shape.clone(),
+                stride: n.data.stride.clone(),
+            }
         }
 
         // seed dL/dL = 1
-        self.nodes[loss].grad.data[0] = 1.0;
+        self.nodes[loss].grad.data[0] = T::one();
 
         let topo = self.topo_from(loss);
 
@@ -337,139 +271,33 @@ where
     }
 
     fn backward_node(&mut self, id: TensorId) {
-        let (op, parents, grad, out_data) = {
+        let (op, parents, grad, _out_data) = {
             let n = &self.nodes[id];
-            (n.op, n.parents.clone(), n.grad.clone(), n.data.clone())
+            (
+                n.op.clone(),
+                n.parents.clone(),
+                n.grad.clone(),
+                n.data.clone(),
+            )
         };
+        let parent_nodes: Vec<&Tensor<T, B>> = parents.iter().map(|&p| &self.nodes[p]).collect();
+        let grads = op.backward(
+            &parent_nodes,
+            &Tensor::new(0, grad.data, Arc::new(ops::NoOp), grad.shape, vec![], false),
+        );
 
-        // match op {
-        //     Op::MatMul => {
-        //         let [a, b] = parents[..] else { return };
-        //
-        //         let grad_z = &grad;
-        //         let a_data = &self.nodes[a].data;
-        //         let b_data = &self.nodes[b].data;
-        //
-        //         // dA = dZ · Bᵀ
-        //         let mut da = Matrix::new(a_data.row, a_data.col);
-        //         mat_mul(&mut da, grad_z, b_data, B8(1), B8(0), B8(1));
-        //
-        //         // dB = Aᵀ · dZ
-        //         let mut db = Matrix::new(b_data.row, b_data.col);
-        //         mat_mul(&mut db, a_data, grad_z, B8(1), B8(1), B8(0));
-        //
-        //         for i in 0..da.data.len() {
-        //             self.nodes[a].grad.data[i] += da.data[i];
-        //         }
-        //         for i in 0..db.data.len() {
-        //             self.nodes[b].grad.data[i] += db.data[i];
-        //         }
-        //     }
-        //     Op::Sum => {
-        //         let [a] = parents[..] else { return };
-        //         let g = grad.data[0];
-        //
-        //         for i in 0..self.nodes[a].grad.data.len() {
-        //             self.nodes[a].grad.data[i] += g;
-        //         }
-        //     }
-        //
-        //     Op::Mean => {
-        //         let [a] = parents[..] else { return };
-        //         let scale = grad.data[0] / (self.nodes[a].data.row * self.nodes[a].data.col) as f32;
-        //
-        //         for i in 0..self.nodes[a].grad.data.len() {
-        //             self.nodes[a].grad.data[i] += scale;
-        //         }
-        //     }
-        //
-        //     Op::Neg => {
-        //         let [a] = parents[..] else { return };
-        //
-        //         for i in 0..grad.data.len() {
-        //             self.nodes[a].grad.data[i] -= grad.data[i]; // Derivative of -x is -1
-        //         }
-        //     }
-        //
-        //     Op::Add => {
-        //         let [a, b] = parents[..] else { return };
-        //
-        //         let ga = &mut self.nodes[a].grad;
-        //         for i in 0..ga.data.len() {
-        //             ga.data[i] += grad.data[i];
-        //         }
-        //
-        //         // Handle scalar broadcasting
-        //         let gb = &mut self.nodes[b].grad;
-        //         if gb.row == 1 && gb.col == 1 {
-        //             // Sum all gradients for scalar
-        //             let sum: f32 = grad.data.iter().sum();
-        //             gb.data[0] += sum;
-        //         } else {
-        //             for i in 0..gb.data.len() {
-        //                 gb.data[i] += grad.data[i];
-        //             }
-        //         }
-        //     }
-        //
-        //     Op::Sub => {
-        //         let [a, b] = parents[..] else { return };
-        //
-        //         for i in 0..grad.data.len() {
-        //             self.nodes[a].grad.data[i] += grad.data[i];
-        //             self.nodes[b].grad.data[i] -= grad.data[i];
-        //         }
-        //     }
-        //
-        //     Op::Log => {
-        //         let [a] = parents[..] else { return };
-        //
-        //         for i in 0..grad.data.len() {
-        //             let val = self.nodes[a].data.data[i];
-        //             if val.is_normal() && val > 0.0 {
-        //                 // Check for normal positive values
-        //                 self.nodes[a].grad.data[i] += grad.data[i] / val;
-        //             } else if val > 0.0 {
-        //                 // Handle denormal numbers
-        //                 self.nodes[a].grad.data[i] += grad.data[i] / f32::max(val, 1e-8);
-        //             }
-        //             // For val <= 0, gradient is undefined, so skip
-        //         }
-        //     }
-        //
-        //     Op::Mul => {
-        //         let [a, b] = parents[..] else { return };
-        //         for i in 0..grad.data.len() {
-        //             self.nodes[a].grad.data[i] += grad.data[i] * self.nodes[b].data.data[i];
-        //             self.nodes[b].grad.data[i] += grad.data[i] * self.nodes[a].data.data[i];
-        //         }
-        //     }
-        //
-        //     Op::Relu => {
-        //         let [a] = parents[..] else { return };
-        //
-        //         for i in 0..grad.data.len() {
-        //             if self.nodes[a].data.data[i] > 0.0 {
-        //                 self.nodes[a].grad.data[i] += grad.data[i];
-        //             }
-        //         }
-        //     }
-        //
-        //     Op::Sigmoid => {
-        //         let [a] = parents[..] else { return };
-        //         for i in 0..grad.data.len() {
-        //             let s = out_data.data[i];
-        //             self.nodes[a].grad.data[i] += grad.data[i] * s * (1.0 - s);
-        //         }
-        //     }
-        //
-        //     _ => {}
-        // }
+        for (i, &p) in parents.iter().enumerate() {
+            for (j, g) in self.nodes[p].grad.data.iter_mut().enumerate() {
+                *g = *g + grads[i].data.data[j];
+            }
+        }
     }
 
     pub fn zero_grad(&mut self) {
         for n in &mut self.nodes {
-            B::fill(n, B::DType::zero());
+            for g in &mut n.grad.data {
+                *g = T::zero();
+            }
         }
     }
 
@@ -477,7 +305,8 @@ where
         for n in &mut self.nodes {
             if n.req_grad {
                 for i in 0..n.data.data.len() {
-                    n.data.data[i] -= lr * n.grad.data[i];
+                    let learning_rate = T::from_f32(lr).unwrap();
+                    n.data.data[i] = n.data.data[i] - learning_rate * n.grad.data[i];
                 }
             }
         }
@@ -487,7 +316,12 @@ where
         let mut visited = vec![false; self.nodes.len()];
         let mut stack = Vec::new();
 
-        fn dfs(g: &Graph, v: TensorId, visited: &mut Vec<bool>, stack: &mut Vec<TensorId>) {
+        fn dfs<T: Numeric, B: Backend<DType = T>>(
+            g: &Graph<T, B>,
+            v: TensorId,
+            visited: &mut Vec<bool>,
+            stack: &mut Vec<TensorId>,
+        ) {
             if visited[v] {
                 return;
             }
@@ -505,7 +339,7 @@ where
     }
 
     pub fn mul_scaler(&mut self, a: TensorId, x: T) -> TensorId {
-        let node = &self.nodes[a];
+        let _node = &self.nodes[a];
         todo!()
     }
 }

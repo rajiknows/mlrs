@@ -1,46 +1,35 @@
-use mlrs::{Graph, Matrix};
+use mlrs::{
+    backends::cpu::CPUBackend,
+    tensor::Graph,
+};
 
 fn main() {
     // y = 2x + 1
-    let mut x = Matrix::new(4, 1);
-    x.data = vec![1.0, 2.0, 3.0, 4.0];
+    let mut g: Graph<f32, CPUBackend> = Graph::new();
 
-    let mut y = Matrix::new(4, 1);
-    y.data = vec![3.0, 5.0, 7.0, 9.0];
+    let x_data = vec![1.0, 2.0, 3.0, 4.0];
+    let y_data = vec![3.0, 5.0, 7.0, 9.0];
 
-    let mut g = Graph { nodes: vec![] };
+    let x = g.tensor(x_data, vec![4, 1], false);
+    let y = g.tensor(y_data, vec![4, 1], false);
 
-    // constants
-    let x_id = g.tensor(&x, false);
-    let y_id = g.tensor(&y, false);
-
-    let w = g.tensor(&Matrix::new(1, 1), true);
-    let b_scalar = g.tensor(&Matrix::new(1, 1), true);
-    g.nodes[w].data.data[0] = 0.0;
-    g.nodes[b_scalar].data.data[0] = 0.0;
+    let w = g.tensor(vec![0.0], vec![1, 1], true);
+    let b = g.tensor(vec![0.0], vec![1, 1], true);
 
     for _ in 0..1000 {
         g.zero_grad();
 
-        let y_hat = g.matmul(x_id, w); // (4,1) * (1,1) = (4,1)
-        // let y_hat = g.add_broadcast(y_hat, b);
-
-        // FIX: Create a broadcast bias
-        let mut b_vec = Matrix::new(4, 1);
-        b_vec.fill(g.nodes[b_scalar].data.data[0]);
-        let b_id = g.tensor(&b_vec, false);
-
-        let y_hat = g.add_broadcast(y_hat, b_id);
-        let y_hat = g.add(y_hat, b_id); // (4,1) + (4,1) = (4,1)
-        let diff = g.sub(y_hat, y_id); // (4,1) - (4,1) = (4,1)
-        let sq = g.mul(diff, diff); // (4,1) * (4,1) = (4,1)
-        let loss = g.mean(sq); // scalar
+        let y_hat = g.matmul(x, w);
+        let y_hat = g.add_broadcast(y_hat, b);
+        let diff = g.sub(y_hat, y);
+        let sq = g.mul(diff, diff);
+        let loss = g.mean(sq);
 
         g.backtrack(loss);
         g.step(0.01);
     }
 
     println!("w = {}", g.nodes[w].data.data[0]);
-    println!("b = {}", g.nodes[b_scalar].data.data[0]);
+    println!("b = {}", g.nodes[b].data.data[0]);
 }
 
