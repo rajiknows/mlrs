@@ -1,99 +1,11 @@
 use std::sync::Arc;
 
-use wgpu::Buffer;
-
-use super::{
+use crate::{
     backends::Backend,
     numeric::Numeric,
-    ops::{self, Operation},
+    ops,
+    tensor::{Tensor, TensorId},
 };
-
-pub type TensorId = usize;
-
-#[derive(Debug, Clone, Default)]
-pub struct NdimVector<T: Numeric> {
-    pub data: Vec<T>,
-    pub shape: Vec<usize>,
-    pub stride: Vec<usize>,
-}
-
-enum Storage<T: Numeric> {
-    Cpu(NdimVector<T>),
-    Gpu(Buffer),
-}
-
-#[derive(Clone)]
-pub struct Tensor<T: Numeric, B: Backend> {
-    pub id: TensorId,
-    // pub data: NdimVector<T>,
-    pub grad: Option<B::Tensor>,
-    pub shape: Vec<usize>,
-    pub stride: Vec<usize>,
-    pub inner: B::Tensor,
-    pub op: Arc<dyn Operation<T, B>>,
-    pub parents: Vec<TensorId>,
-    pub req_grad: bool,
-}
-
-impl<T: Numeric, B: Backend<DType = T>> Tensor<T, B> {
-    pub fn new(
-        id: TensorId,
-        data: Vec<T>,
-        op: Arc<dyn Operation<T, B>>,
-        shape: Vec<usize>,
-        parents: Vec<TensorId>,
-        req_grad: bool,
-    ) -> Self {
-        let stride = calculate_strides(&shape);
-        let inner = B::from_cpu(&data, &shape);
-
-        Self {
-            id,
-            inner,
-            grad: None,
-            shape,
-            stride,
-            op,
-            parents,
-            req_grad,
-        }
-    }
-    pub fn leaf(id: TensorId, data: Vec<T>, shape: Vec<usize>, req_grad: bool) -> Self {
-        let stride = calculate_strides(&shape);
-        let inner = B::from_cpu(&data, &shape);
-
-        Self {
-            id,
-            inner,
-            grad: None,
-            shape,
-            stride,
-            op: Arc::new(ops::NoOp),
-            parents: Vec::new(),
-            req_grad,
-        }
-    }
-
-    // pub fn t(&self) -> Self {
-    //     let (inner, new_shape) = B::t(&self.inner, &self.shape);
-    //     let stride = calculate_strides(&new_shape);
-
-    //     Self {
-    //         id: new_id(),
-    //         inner,
-    //         grad: None,
-    //         shape: new_shape,
-    //         stride,
-    //         op: Arc::new(ops::Transpose),
-    //         parents: vec![self.id],
-    //         req_grad: self.req_grad,
-    //     }
-    // }
-}
-
-fn calculate_strides(shape: &[usize]) -> Vec<usize> {
-    todo!()
-}
 
 pub struct Graph<T: Numeric, B: Backend<DType = T>> {
     pub nodes: Vec<Tensor<T, B>>,
@@ -142,19 +54,16 @@ where
 
     pub fn sub(&mut self, a: TensorId, b: TensorId) -> TensorId {
         let (node_a, node_b) = (&self.nodes[a], &self.nodes[b]);
-        let inner = B::sub(&node_a.inner, &node_b.inner);
+        let new_tensor = B::sub(node_a, node_b);
         let id = self.nodes.len();
-        let stride = Tensor::<T, B>::calculate_strides(&node_a.shape);
-        self.nodes.push(Tensor {
+        self.nodes.push(Tensor::new(
             id,
-            inner,
-            grad: None,
-            shape: node_a.shape.clone(),
-            stride,
-            op: Arc::new(ops::Sub),
-            parents: vec![a, b],
-            req_grad: node_a.req_grad || node_b.req_grad,
-        });
+            new_tensor.data.data,
+            Arc::new(ops::Sub),
+            new_tensor.data.shape,
+            vec![a, b],
+            true,
+        ));
         id
     }
 

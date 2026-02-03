@@ -36,3 +36,15 @@ pub fn determinant<T: Numeric>(mat: &NdimVector<T>) -> T {
     }
     det * res
 }
+
+pub fn calculate_strides(shape: &[usize]) -> Vec<usize> {
+    let mut strides = vec![0; shape.len()];
+    let mut acc = 1;
+
+    for i in (0..shape.len()).rev() {
+        strides[i] = acc;
+        acc *= shape[i];
+    }
+
+    strides
+}

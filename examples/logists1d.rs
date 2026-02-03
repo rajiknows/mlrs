@@ -1,6 +1,6 @@
 use mlrs::{
     backends::cpu::CPUBackend,
-    tensor::{Graph, Tensor},
+    tensor::Graph,
 };
 
 fn main() {

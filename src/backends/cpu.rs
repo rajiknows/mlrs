@@ -1,210 +1,285 @@
-use crate::{backends::Backend, ops, tensor::Tensor, utils::determinant};
-use std::sync::Arc;
+use crate::{
+    backends::Backend,
+    numeric::Numeric,
+    tensor::{NdimVector, Tensor},
+    utils::{calculate_strides, determinant},
+};
 
 #[derive(Clone, Copy)]
 pub struct CPUBackend;
 
+#[derive(Debug, Clone)]
+pub struct CpuTensor<T: Numeric> {
+    data: NdimVector<T>,
+}
 impl Backend for CPUBackend {
     type DType = f32;
+    type Tensor = CpuTensor<f32>;
 
-    fn add(
-        a: &Tensor<Self::DType, Self>,
-        b: &Tensor<Self::DType, Self>,
-    ) -> Tensor<Self::DType, Self> {
-        assert_eq!(a.data.shape, b.data.shape);
+    /* ---------- IO ---------- */
 
-        let data = a
-            .data
-            .data
-            .iter()
-            .zip(&b.data.data)
-            .map(|(x, y)| x + y)
-            .collect::<Vec<_>>();
+    fn from_cpu(data: &[f32], shape: &[usize]) -> Self::Tensor {
+        CpuTensor::new(data.to_vec(), shape.to_vec())
+    }
 
-        Tensor::new(
-            0,
-            data,
-            Arc::new(ops::NoOp),
+    fn to_cpu(t: &Self::Tensor) -> Vec<f32> {
+        t.data.data.clone()
+    }
+
+    /* ---------- Elementwise ---------- */
+
+    fn add(a: &Self::Tensor, b: &Self::Tensor, _: &[usize]) -> Self::Tensor {
+        CpuTensor::new(
+            a.data
+                .data
+                .iter()
+                .zip(&b.data.data)
+                .map(|(x, y)| x + y)
+                .collect(),
             a.data.shape.clone(),
-            vec![],
-            true,
         )
     }
 
-    fn sub(
-        a: &Tensor<Self::DType, Self>,
-        b: &Tensor<Self::DType, Self>,
-    ) -> Tensor<Self::DType, Self> {
-        assert_eq!(a.data.shape, b.data.shape);
-
-        let data = a
-            .data
-            .data
-            .iter()
-            .zip(&b.data.data)
-            .map(|(x, y)| x - y)
-            .collect::<Vec<_>>();
-
-        Tensor::new(
-            0,
-            data,
-            Arc::new(ops::NoOp),
+    fn sub(a: &Self::Tensor, b: &Self::Tensor) -> Self::Tensor {
+        CpuTensor::new(
+            a.data
+                .data
+                .iter()
+                .zip(&b.data.data)
+                .map(|(x, y)| x - y)
+                .collect(),
             a.data.shape.clone(),
-            vec![],
-            true,
         )
     }
 
-    fn mul(
-        a: &Tensor<Self::DType, Self>,
-        b: &Tensor<Self::DType, Self>,
-    ) -> Tensor<Self::DType, Self> {
-        assert_eq!(a.data.shape, b.data.shape);
-
-        let data = a
-            .data
-            .data
-            .iter()
-            .zip(&b.data.data)
-            .map(|(x, y)| x * y)
-            .collect::<Vec<_>>();
-
-        Tensor::new(
-            0,
-            data,
-            Arc::new(ops::NoOp),
+    fn mul(a: &Self::Tensor, b: &Self::Tensor) -> Self::Tensor {
+        CpuTensor::new(
+            a.data
+                .data
+                .iter()
+                .zip(&b.data.data)
+                .map(|(x, y)| x * y)
+                .collect(),
             a.data.shape.clone(),
-            vec![],
-            true,
         )
     }
 
-    fn div_scalar(a: &Tensor<Self::DType, Self>, scalar: f32) -> Tensor<Self::DType, Self> {
-        let data = a.data.data.iter().map(|x| x / scalar).collect();
-        Tensor::new(
-            0,
-            data,
-            Arc::new(ops::NoOp),
+    fn neg(a: &Self::Tensor) -> Self::Tensor {
+        CpuTensor::new(
+            a.data.data.iter().map(|x| -*x).collect(),
             a.data.shape.clone(),
-            vec![],
-            true,
         )
     }
 
-    fn sub_scalar(a: &Tensor<Self::DType, Self>, scalar: f32) -> Tensor<Self::DType, Self> {
-        let data = a.data.data.iter().map(|x| x - scalar).collect();
-        Tensor::new(
-            0,
-            data,
-            Arc::new(ops::NoOp),
+    fn fill(a: &Self::Tensor, p: f32) -> Self::Tensor {
+        CpuTensor::new(vec![p; a.data.data.len()], a.data.shape.clone())
+    }
+
+    /* ---------- Scalars ---------- */
+
+    fn div_scalar(a: &Self::Tensor, s: f32) -> Self::Tensor {
+        CpuTensor::new(
+            a.data.data.iter().map(|x| x / s).collect(),
             a.data.shape.clone(),
-            vec![],
-            true,
         )
     }
 
-    fn neg(a: &Tensor<Self::DType, Self>) -> Tensor<Self::DType, Self> {
-        let data = a.data.data.iter().map(|x| -*x).collect();
-        Tensor::new(
-            0,
-            data,
-            Arc::new(ops::NoOp),
+    fn sub_scalar(a: &Self::Tensor, s: f32) -> Self::Tensor {
+        CpuTensor::new(
+            a.data.data.iter().map(|x| x - s).collect(),
             a.data.shape.clone(),
-            vec![],
-            true,
         )
     }
 
-    fn fill(a: &Tensor<Self::DType, Self>, p: Self::DType) -> Tensor<Self::DType, Self> {
-        let data = a.data.data.iter().map(|_| p).collect();
-        Tensor::new(
-            0,
-            data,
-            Arc::new(ops::NoOp),
-            a.data.shape.clone(),
-            vec![],
-            true,
-        )
-    }
+    /* ---------- Broadcast ---------- */
 
-    fn broadcast(a: &Tensor<Self::DType, Self>, shape: &Vec<usize>) -> Tensor<Self::DType, Self> {
-        let new_data = vec![a.data.data[0]; shape.iter().product()];
-        Tensor::new(
-            0,
-            new_data,
-            Arc::new(ops::NoOp),
-            shape.clone(),
-            vec![],
-            true,
-        )
+    fn broadcast(a: &Self::Tensor, shape: &Vec<usize>) -> Self::Tensor {
+        CpuTensor::new(vec![a.data.data[0]; shape.iter().product()], shape.clone())
     }
 
     /* ---------- Matrix ops ---------- */
 
-    fn matmul(
-        a: &Tensor<Self::DType, Self>,
-        b: &Tensor<Self::DType, Self>,
-    ) -> Tensor<Self::DType, Self> {
-        assert_eq!(a.data.shape.len(), 2);
-        assert_eq!(b.data.shape.len(), 2);
-        assert_eq!(a.data.shape[1], b.data.shape[0]);
-
+    fn matmul(a: &Self::Tensor, b: &Self::Tensor) -> Self::Tensor {
         let (m, k) = (a.data.shape[0], a.data.shape[1]);
         let n = b.data.shape[1];
 
         let mut out = vec![0.0; m * n];
-
         for i in 0..m {
             for j in 0..n {
-                let mut sum = 0.0;
                 for kk in 0..k {
-                    sum += a.data.data[i * k + kk] * b.data.data[kk * n + j];
+                    out[i * n + j] += a.data.data[i * k + kk] * b.data.data[kk * n + j];
                 }
-                out[i * n + j] = sum;
             }
         }
 
-        Tensor::new(
-            0,
-            out,
-            Arc::new(ops::NoOp),
-            vec![m, n],
-            vec![a.id, b.id],
-            true,
+        CpuTensor::new(out, vec![m, n])
+    }
+
+    fn t(a: &Self::Tensor) -> Self::Tensor {
+        let (r, c) = (a.data.shape[0], a.data.shape[1]);
+        let mut out = vec![0.0; a.data.data.len()];
+
+        for i in 0..r {
+            for j in 0..c {
+                out[j * r + i] = a.data.data[i * c + j];
+            }
+        }
+
+        CpuTensor::new(out, vec![c, r])
+    }
+
+    /* ---------- Reductions ---------- */
+
+    fn sum(a: &Self::Tensor) -> Self::Tensor {
+        CpuTensor::new(vec![a.data.data.iter().sum()], vec![1])
+    }
+
+    fn mean(a: &Self::Tensor) -> Self::Tensor {
+        CpuTensor::new(
+            vec![a.data.data.iter().sum::<f32>() / a.data.data.len() as f32],
+            vec![1],
         )
     }
 
-    fn t(a: &Tensor<Self::DType, Self>) -> Tensor<Self::DType, Self> {
-        let shape = &a.data.shape;
-        let mut new_shape = shape.clone();
-        new_shape.reverse();
+    fn sum_to_shape(g: &Self::Tensor, shape: &[usize]) -> Self::Tensor {
+        match shape {
+            [1, c] => {
+                let mut out = vec![0.0; *c];
+                for i in 0..g.data.shape[0] {
+                    for j in 0..*c {
+                        out[j] += g.data.data[i * *c + j];
+                    }
+                }
+                CpuTensor::new(out, shape.to_vec())
+            }
+            [1, 1] => CpuTensor::new(vec![g.data.data.iter().sum()], vec![1]),
+            _ => panic!("unsupported sum_to_shape"),
+        }
+    }
 
-        let mut new_data = vec![0.0; a.data.data.len()];
-        let _new_strides = Tensor::<Self::DType, Self>::calculate_strides(&new_shape);
+    /* ---------- Activations ---------- */
 
-        for i in 0..shape[0] {
-            for j in 0..shape[1] {
-                new_data[j * shape[0] + i] = a.data.data[i * shape[1] + j];
+    fn relu(a: &Self::Tensor) -> Self::Tensor {
+        CpuTensor::new(
+            a.data.data.iter().map(|x| x.max(0.0)).collect(),
+            a.data.shape.clone(),
+        )
+    }
+
+    fn sigmoid(a: &Self::Tensor) -> Self::Tensor {
+        CpuTensor::new(
+            a.data
+                .data
+                .iter()
+                .map(|x| 1.0 / (1.0 + (-x).exp()))
+                .collect(),
+            a.data.shape.clone(),
+        )
+    }
+
+    fn softmax(a: &Self::Tensor, _: usize) -> Self::Tensor {
+        let (r, c) = (a.data.shape[0], a.data.shape[1]);
+        let mut out = vec![0.0; r * c];
+
+        for i in 0..r {
+            let row = &a.data.data[i * c..(i + 1) * c];
+            let max = row.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+            let mut sum = 0.0;
+
+            for j in 0..c {
+                out[i * c + j] = (row[j] - max).exp();
+                sum += out[i * c + j];
+            }
+            for j in 0..c {
+                out[i * c + j] /= sum;
             }
         }
 
-        Tensor::new(0, new_data, Arc::new(ops::NoOp), new_shape, vec![], true)
+        CpuTensor::new(out, a.data.shape.clone())
     }
 
-    fn add_broadcast(
-        a: &Tensor<Self::DType, Self>,
-        b: &Tensor<Self::DType, Self>,
-    ) -> Tensor<Self::DType, Self> {
-        // b is (1, D) or (1,1)
-        assert_eq!(a.data.shape.len(), 2);
-        assert_eq!(b.data.shape.len(), 2);
-        assert_eq!(b.data.shape[0], 1);
+    /* ---------- Losses ---------- */
 
+    fn mse(p: &Self::Tensor, t: &Self::Tensor) -> Self::Tensor {
+        let mut s = 0.0;
+        for i in 0..p.data.data.len() {
+            let d = p.data.data[i] - t.data.data[i];
+            s += d * d;
+        }
+        CpuTensor::new(vec![s / p.data.data.len() as f32], vec![1])
+    }
+
+    fn bce_with_logits(l: &Self::Tensor, t: &Self::Tensor) -> Self::Tensor {
+        let mut s = 0.0;
+        for i in 0..l.data.data.len() {
+            let z = l.data.data[i];
+            let y = t.data.data[i];
+            let m = z.max(0.0);
+            s += m - z * y + ((-z.abs()).exp() + 1.0).ln();
+        }
+        CpuTensor::new(vec![s / l.data.data.len() as f32], vec![1])
+    }
+
+    fn cross_entropy(l: &Self::Tensor, t: &Self::Tensor) -> Self::Tensor {
+        let p = Self::softmax(l, 1);
+        let mut s = 0.0;
+        for i in 0..p.data.data.len() {
+            if t.data.data[i] > 0.0 {
+                s -= p.data.data[i].ln();
+            }
+        }
+        CpuTensor::new(vec![s / l.data.shape[0] as f32], vec![1])
+    }
+
+    /* ---------- Misc ---------- */
+
+    fn inv(a: &Self::Tensor) -> Self::Tensor {
+        let det = determinant(&a.data);
+        assert!(det != 0.0);
+        CpuTensor::new(
+            a.data.data.iter().map(|x| x / det).collect(),
+            a.data.shape.clone(),
+        )
+    }
+
+    fn elementwise_inv(a: &Self::Tensor) -> Self::Tensor {
+        CpuTensor::new(
+            a.data.data.iter().map(|x| 1.0 / x).collect(),
+            a.data.shape.clone(),
+        )
+    }
+
+    fn gt(a: &Self::Tensor, scalar: f32) -> Self::Tensor {
+        CpuTensor::new(
+            a.data
+                .data
+                .iter()
+                .map(|x| if *x > scalar { 1.0 } else { 0.0 })
+                .collect(),
+            a.data.shape.clone(),
+        )
+    }
+
+    fn log(a: &Self::Tensor) -> Self::Tensor {
+        let eps = 1e-7;
+        CpuTensor::new(
+            a.data.data.iter().map(|x| (x + eps).ln()).collect(),
+            a.data.shape.clone(),
+        )
+    }
+
+    fn exp(a: &Self::Tensor) -> Self::Tensor {
+        CpuTensor::new(
+            a.data.data.iter().map(|x| x.exp()).collect(),
+            a.data.shape.clone(),
+        )
+    }
+
+    fn add_broadcast(a: &Self::Tensor, b: &Self::Tensor) -> Self::Tensor {
         let rows = a.data.shape[0];
         let cols = a.data.shape[1];
 
-        let mut out = vec![0.0; a.data.data.len()];
-
+        let mut out = vec![0.0; rows * cols];
         for i in 0..rows {
             for j in 0..cols {
                 out[i * cols + j] =
@@ -212,245 +287,21 @@ impl Backend for CPUBackend {
             }
         }
 
-        Tensor::new(
-            0,
-            out,
-            Arc::new(ops::NoOp),
-            a.data.shape.clone(),
-            vec![],
-            true,
-        )
+        CpuTensor::new(out, a.data.shape.clone())
     }
-
-    /* ---------- Reductions ---------- */
-
-    fn sum_to_shape(
-        grad: &Tensor<Self::DType, Self>,
-        target_shape: &[usize],
-    ) -> Tensor<Self::DType, Self> {
-        let rows = grad.data.shape[0];
-        let cols = grad.data.shape[1];
-
-        match target_shape {
-            // (1, C)
-            [1, c] if *c == cols => {
-                let mut out = vec![0.0; cols];
-                for i in 0..rows {
-                    for j in 0..cols {
-                        out[j] += grad.data.data[i * cols + j];
-                    }
-                }
-
-                Tensor::new(0, out, Arc::new(ops::NoOp), vec![1, cols], vec![], true)
-            }
-
-            // (1, 1)
-            [1, 1] => {
-                let sum = grad.data.data.iter().sum();
-                Tensor::new(0, vec![sum], Arc::new(ops::NoOp), vec![1, 1], vec![], true)
-            }
-
-            _ => panic!("unsupported broadcast backward shape"),
+}
+impl<T> CpuTensor<T>
+where
+    T: Numeric,
+{
+    fn new(data: Vec<T>, shape: Vec<usize>) -> Self {
+        let stride = calculate_strides(&shape);
+        Self {
+            data: NdimVector {
+                data,
+                shape,
+                stride,
+            },
         }
-    }
-
-    fn sum(a: &Tensor<Self::DType, Self>) -> Tensor<Self::DType, Self> {
-        let s = a.data.data.iter().sum::<Self::DType>();
-        Tensor::new(0, vec![s], Arc::new(ops::NoOp), vec![1], vec![], true)
-    }
-
-    fn mean(a: &Tensor<Self::DType, Self>) -> Tensor<Self::DType, Self> {
-        let s = a.data.data.iter().sum::<Self::DType>() / a.data.data.len() as Self::DType;
-        Tensor::new(0, vec![s], Arc::new(ops::NoOp), vec![1], vec![], true)
-    }
-
-    /* ---------- Activations ---------- */
-
-    fn relu(a: &Tensor<Self::DType, Self>) -> Tensor<Self::DType, Self> {
-        let data = a.data.data.iter().map(|x| x.max(0.0)).collect();
-        Tensor::new(
-            0,
-            data,
-            Arc::new(ops::NoOp),
-            a.data.shape.clone(),
-            vec![],
-            true,
-        )
-    }
-
-    fn gt(a: &Tensor<Self::DType, Self>, scalar: f32) -> Tensor<Self::DType, Self> {
-        let data = a
-            .data
-            .data
-            .iter()
-            .map(|x| if *x > scalar { 1.0 } else { 0.0 })
-            .collect();
-        Tensor::new(
-            0,
-            data,
-            Arc::new(ops::NoOp),
-            a.data.shape.clone(),
-            vec![],
-            true,
-        )
-    }
-
-    fn sigmoid(a: &Tensor<Self::DType, Self>) -> Tensor<Self::DType, Self> {
-        let data = a
-            .data
-            .data
-            .iter()
-            .map(|x| 1.0 / (1.0 + (-x).exp()))
-            .collect();
-        Tensor::new(
-            0,
-            data,
-            Arc::new(ops::NoOp),
-            a.data.shape.clone(),
-            vec![],
-            true,
-        )
-    }
-
-    fn softmax(a: &Tensor<Self::DType, Self>, _dim: usize) -> Tensor<Self::DType, Self> {
-        let rows = a.data.shape[0];
-        let cols = a.data.shape[1];
-
-        let mut out = vec![0.0; a.data.data.len()];
-
-        for i in 0..rows {
-            let row = &a.data.data[i * cols..(i + 1) * cols];
-            let max = row
-                .iter()
-                .cloned()
-                .fold(Self::DType::NEG_INFINITY, Self::DType::max);
-
-            let mut sum = 0.0;
-            for j in 0..cols {
-                let e = (row[j] - max).exp();
-                out[i * cols + j] = e;
-                sum += e;
-            }
-
-            for j in 0..cols {
-                out[i * cols + j] /= sum;
-            }
-        }
-
-        Tensor::new(
-            0,
-            out,
-            Arc::new(ops::NoOp),
-            a.data.shape.clone(),
-            vec![],
-            true,
-        )
-    }
-
-    /* ---------- Math ops ---------- */
-
-    fn log(a: &Tensor<Self::DType, Self>) -> Tensor<Self::DType, Self> {
-        let eps = 1e-7;
-        let data = a.data.data.iter().map(|x| (x + eps).ln()).collect();
-        Tensor::new(
-            0,
-            data,
-            Arc::new(ops::NoOp),
-            a.data.shape.clone(),
-            vec![],
-            true,
-        )
-    }
-
-    fn exp(a: &Tensor<Self::DType, Self>) -> Tensor<Self::DType, Self> {
-        let data = a.data.data.iter().map(|x| x.exp()).collect();
-        Tensor::new(
-            0,
-            data,
-            Arc::new(ops::NoOp),
-            a.data.shape.clone(),
-            vec![],
-            true,
-        )
-    }
-
-    // TODO: fix this
-    fn inv(a: &Tensor<Self::DType, Self>) -> Tensor<Self::DType, Self> {
-        // first find determinant
-        let det = determinant(&a.data);
-        if det == 0.0 {
-            panic!("Matrix is not invertible");
-        }
-        let inv_det = 1.0 / det;
-
-        let mut b = a.clone();
-        b.data.data = b.data.data.iter().map(|x| x * inv_det).collect();
-        b
-    }
-
-    /* ---------- Losses (CRITICAL) ---------- */
-
-    fn mse(
-        pred: &Tensor<Self::DType, Self>,
-        target: &Tensor<Self::DType, Self>,
-    ) -> Tensor<Self::DType, Self> {
-        assert_eq!(pred.data.shape, target.data.shape);
-
-        let mut sum = 0.0;
-        for i in 0..pred.data.data.len() {
-            let d = pred.data.data[i] - target.data.data[i];
-            sum += d * d;
-        }
-
-        Tensor::new(
-            0,
-            vec![sum / pred.data.data.len() as Self::DType],
-            Arc::new(ops::NoOp),
-            vec![1],
-            vec![],
-            true,
-        )
-    }
-
-    /// Numerically stable BCE (NO sigmoid inside user code)
-    fn bce_with_logits(
-        logits: &Tensor<Self::DType, Self>,
-        target: &Tensor<Self::DType, Self>,
-    ) -> Tensor<Self::DType, Self> {
-        assert_eq!(logits.data.shape, target.data.shape);
-
-        let mut sum = 0.0;
-        for i in 0..logits.data.data.len() {
-            let z = logits.data.data[i];
-            let y = target.data.data[i];
-
-            let max = z.max(0.0);
-            sum += max - z * y + ((-z.abs()).exp() + 1.0).ln();
-        }
-
-        Tensor::new(
-            0,
-            vec![sum / logits.data.data.len() as Self::DType],
-            Arc::new(ops::NoOp),
-            vec![1],
-            vec![],
-            true,
-        )
-    }
-
-    fn cross_entropy(
-        logits: &Tensor<Self::DType, Self>,
-        target: &Tensor<Self::DType, Self>, // class indices or one-hot
-    ) -> Tensor<Self::DType, Self> {
-        let probs = Self::softmax(logits, 1);
-        let mut sum = 0.0;
-
-        for i in 0..probs.data.data.len() {
-            if target.data.data[i] > 0.0 {
-                sum -= probs.data.data[i].ln();
-            }
-        }
-
-        Tensor::new(0, vec![sum], Arc::new(ops::NoOp), vec![1], vec![], true)
     }
 }

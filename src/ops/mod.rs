@@ -52,7 +52,7 @@ impl<T: Numeric, B: Backend<DType = T>> Operation<T, B> for Log {
 
     fn backward(&self, inputs: &[&Tensor<T, B>], output_grad: &Tensor<T, B>) -> Vec<Tensor<T, B>> {
         let x = inputs[0];
-        let inv_x = B::inv(x); // 1 / x
+        let inv_x = B::elementwise_inv(x); // 1 / x
         let grad = B::mul(output_grad, &inv_x);
         vec![grad]
     }
@@ -144,7 +144,8 @@ impl<T: Numeric, B: Backend<DType = T>> Operation<T, B> for Sigmoid {
     fn backward(&self, inputs: &[&Tensor<T, B>], output_grad: &Tensor<T, B>) -> Vec<Tensor<T, B>> {
         let s = self.forward(inputs);
         let s_minus_one = B::sub_scalar(&s, 1.0);
-        let s_mul = B::mul(&s, &s_minus_one);
+        let one_minus_s = B::neg(&s_minus_one);
+        let s_mul = B::mul(&s, &one_minus_s);
         let grad = B::mul(output_grad, &s_mul);
         vec![grad]
     }

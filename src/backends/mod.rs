@@ -1,144 +1,65 @@
 use crate::{numeric::Numeric, tensor::Tensor};
 
 pub mod cpu;
+pub mod wgpu;
 
-pub trait Backend: Clone {
+pub trait Backend: Clone + 'static {
     type DType: Numeric;
+    type Tensor;
 
-    fn add(
-        a: &Tensor<Self::DType, Self>,
-        b: &Tensor<Self::DType, Self>,
-    ) -> Tensor<Self::DType, Self>
-    where
-        Self: Sized;
+    /* ---------- IO ---------- */
 
-    fn sub(
-        a: &Tensor<Self::DType, Self>,
-        b: &Tensor<Self::DType, Self>,
-    ) -> Tensor<Self::DType, Self>
-    where
-        Self: Sized;
+    fn from_cpu(data: &[Self::DType], shape: &[usize]) -> Self::Tensor;
+    fn to_cpu(t: &Self::Tensor) -> Vec<Self::DType>;
 
-    fn mul(
-        a: &Tensor<Self::DType, Self>,
-        b: &Tensor<Self::DType, Self>,
-    ) -> Tensor<Self::DType, Self>
-    where
-        Self: Sized;
+    /* ---------- Elementwise ---------- */
 
-    fn div_scalar(a: &Tensor<Self::DType, Self>, scalar: f32) -> Tensor<Self::DType, Self>
-    where
-        Self: Sized;
+    fn add(a: &Self::Tensor, b: &Self::Tensor) -> Self::Tensor;
+    fn sub(a: &Self::Tensor, b: &Self::Tensor) -> Self::Tensor;
+    fn mul(a: &Self::Tensor, b: &Self::Tensor) -> Self::Tensor;
+    fn neg(a: &Self::Tensor) -> Self::Tensor;
 
-    fn sub_scalar(a: &Tensor<Self::DType, Self>, scalar: f32) -> Tensor<Self::DType, Self>
-    where
-        Self: Sized;
+    fn div_scalar(a: &Self::Tensor, scalar: Self::DType) -> Self::Tensor;
+    fn sub_scalar(a: &Self::Tensor, scalar: Self::DType) -> Self::Tensor;
+    fn fill(a: &Self::Tensor, value: Self::DType) -> Self::Tensor;
 
-    fn neg(a: &Tensor<Self::DType, Self>) -> Tensor<Self::DType, Self>
-    where
-        Self: Sized;
+    /* ---------- Shape ops ---------- */
 
-    fn fill(a: &Tensor<Self::DType, Self>, x: Self::DType) -> Tensor<Self::DType, Self>
-    where
-        Self: Sized;
-
-    fn broadcast(
-        a: &Tensor<Self::DType, Self>,
-        shape: &Vec<usize>,
-    ) -> Tensor<Self::DType, Self>
-    where
-        Self: Sized;
+    fn broadcast(a: &Self::Tensor, out_shape: &[usize]) -> Self::Tensor;
+    fn t(a: &Self::Tensor, in_shape: &[usize]) -> Self::Tensor;
 
     /* ---------- Matrix ops ---------- */
 
     fn matmul(
-        a: &Tensor<Self::DType, Self>,
-        b: &Tensor<Self::DType, Self>,
-    ) -> Tensor<Self::DType, Self>
-    where
-        Self: Sized;
-
-    fn t(a: &Tensor<Self::DType, Self>) -> Tensor<Self::DType, Self>
-    where
-        Self: Sized;
-
-    fn add_broadcast(
-        a: &Tensor<Self::DType, Self>,
-        b: &Tensor<Self::DType, Self>, // (1, D) or (1,1)
-    ) -> Tensor<Self::DType, Self>
-    where
-        Self: Sized;
+        a: &Self::Tensor,
+        b: &Self::Tensor,
+        a_shape: &[usize],
+        b_shape: &[usize],
+    ) -> Self::Tensor;
 
     /* ---------- Reductions ---------- */
 
-    fn sum_to_shape(
-        grad: &Tensor<Self::DType, Self>,
-        target_shape: &[usize],
-    ) -> Tensor<Self::DType, Self>
-    where
-        Self: Sized;
-
-    fn sum(a: &Tensor<Self::DType, Self>) -> Tensor<Self::DType, Self>
-    where
-        Self: Sized;
-
-    fn mean(a: &Tensor<Self::DType, Self>) -> Tensor<Self::DType, Self>
-    where
-        Self: Sized;
+    fn sum(a: &Self::Tensor) -> Self::Tensor;
+    fn mean(a: &Self::Tensor) -> Self::Tensor;
+    fn sum_to_shape(grad: &Self::Tensor, target_shape: &[usize]) -> Self::Tensor;
 
     /* ---------- Activations ---------- */
 
-    fn relu(a: &Tensor<Self::DType, Self>) -> Tensor<Self::DType, Self>
-    where
-        Self: Sized;
+    fn relu(a: &Self::Tensor) -> Self::Tensor;
+    fn sigmoid(a: &Self::Tensor) -> Self::Tensor;
+    fn gt(a: &Self::Tensor, scalar: Self::DType) -> Self::Tensor;
+    fn softmax(a: &Self::Tensor, dim: usize, shape: &[usize]) -> Self::Tensor;
 
-    fn gt(a: &Tensor<Self::DType, Self>, scalar: f32) -> Tensor<Self::DType, Self>
-    where
-        Self: Sized;
+    /* ---------- Math ---------- */
 
-    fn sigmoid(a: &Tensor<Self::DType, Self>) -> Tensor<Self::DType, Self>
-    where
-        Self: Sized;
+    fn log(a: &Self::Tensor) -> Self::Tensor;
+    fn exp(a: &Self::Tensor) -> Self::Tensor;
+    fn elementwise_inv(a: &Self::Tensor) -> Self::Tensor;
+    fn inv(a: &Self::Tensor, shape: &[usize]) -> Self::Tensor;
 
-    fn softmax(a: &Tensor<Self::DType, Self>, dim: usize) -> Tensor<Self::DType, Self>
-    where
-        Self: Sized;
+    /* ---------- Losses ---------- */
 
-    /* ---------- Math ops ---------- */
-
-    fn log(a: &Tensor<Self::DType, Self>) -> Tensor<Self::DType, Self>
-    where
-        Self: Sized;
-
-    fn exp(a: &Tensor<Self::DType, Self>) -> Tensor<Self::DType, Self>
-    where
-        Self: Sized;
-
-    fn inv(a: &Tensor<Self::DType, Self>) -> Tensor<Self::DType, Self>
-    where
-        Self: Sized;
-
-    /* ---------- Losses (CRITICAL) ---------- */
-
-    fn mse(
-        pred: &Tensor<Self::DType, Self>,
-        target: &Tensor<Self::DType, Self>,
-    ) -> Tensor<Self::DType, Self>
-    where
-        Self: Sized;
-
-    /// Numerically stable BCE (NO sigmoid inside user code)
-    fn bce_with_logits(
-        logits: &Tensor<Self::DType, Self>,
-        target: &Tensor<Self::DType, Self>,
-    ) -> Tensor<Self::DType, Self>
-    where
-        Self: Sized;
-
-    fn cross_entropy(
-        logits: &Tensor<Self::DType, Self>,
-        target: &Tensor<Self::DType, Self>, // class indices or one-hot
-    ) -> Tensor<Self::DType, Self>
-    where
-        Self: Sized;
-}
+    fn mse(pred: &Self::Tensor, target: &Self::Tensor) -> Self::Tensor;
+    fn bce_with_logits(logits: &Self::Tensor, target: &Self::Tensor) -> Self::Tensor;
+    fn cross_entropy(logits: &Self::Tensor, target: &Self::Tensor) -> Self::Tensor;
+back}
