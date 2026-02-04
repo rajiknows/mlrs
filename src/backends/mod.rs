@@ -62,4 +62,4 @@ pub trait Backend: Clone + 'static {
     fn mse(pred: &Self::Tensor, target: &Self::Tensor) -> Self::Tensor;
     fn bce_with_logits(logits: &Self::Tensor, target: &Self::Tensor) -> Self::Tensor;
     fn cross_entropy(logits: &Self::Tensor, target: &Self::Tensor) -> Self::Tensor;
-back}
+}

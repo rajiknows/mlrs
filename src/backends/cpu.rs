@@ -93,8 +93,9 @@ impl Backend for CPUBackend {
 
     /* ---------- Broadcast ---------- */
 
-    fn broadcast(a: &Self::Tensor, shape: &Vec<usize>) -> Self::Tensor {
-        CpuTensor::new(vec![a.data.data[0]; shape.iter().product()], shape.clone())
+    // this just copies the first indices data to the shape
+    fn broadcast(a: &Self::Tensor, shape: &[usize]) -> Self::Tensor {
+        CpuTensor::new(vec![a.data.data[0]; shape.iter().product()], shape.to_vec())
     }
 
     /* ---------- Matrix ops ---------- */
@@ -273,21 +274,6 @@ impl Backend for CPUBackend {
             a.data.data.iter().map(|x| x.exp()).collect(),
             a.data.shape.clone(),
         )
-    }
-
-    fn add_broadcast(a: &Self::Tensor, b: &Self::Tensor) -> Self::Tensor {
-        let rows = a.data.shape[0];
-        let cols = a.data.shape[1];
-
-        let mut out = vec![0.0; rows * cols];
-        for i in 0..rows {
-            for j in 0..cols {
-                out[i * cols + j] =
-                    a.data.data[i * cols + j] + b.data.data[j.min(b.data.data.len() - 1)];
-            }
-        }
-
-        CpuTensor::new(out, a.data.shape.clone())
     }
 }
 impl<T> CpuTensor<T>

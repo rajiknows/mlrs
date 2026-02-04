@@ -5,8 +5,10 @@ use crate::{
     numeric::Numeric,
     ops,
     tensor::{Tensor, TensorId},
+    utils::calculate_strides,
 };
-
+/// The Graph only deals with creating the computational graph
+/// and does not care about the implementation of functions from backend
 pub struct Graph<T: Numeric, B: Backend<DType = T>> {
     pub nodes: Vec<Tensor<T, B>>,
 }
@@ -33,10 +35,10 @@ where
 
         assert_eq!(node_a.shape, node_b.shape);
 
-        let inner = B::add(&node_a.inner, &node_b.inner, &node_a.shape);
+        let inner = B::add(&node_a.inner, &node_b.inner);
 
         let id = self.nodes.len();
-        let stride = Tensor::<T, B>::calculate_strides(&node_a.shape);
+        let stride = calculate_strides(&node_a.shape);
 
         self.nodes.push(Tensor {
             id,
@@ -54,27 +56,37 @@ where
 
     pub fn sub(&mut self, a: TensorId, b: TensorId) -> TensorId {
         let (node_a, node_b) = (&self.nodes[a], &self.nodes[b]);
-        let new_tensor = B::sub(node_a, node_b);
+
+        assert_eq!(node_a.shape, node_b.shape);
+
+        let inner = B::sub(&node_a.inner, &node_b.inner);
+
         let id = self.nodes.len();
-        self.nodes.push(Tensor::new(
+        let stride = calculate_strides(&node_a.shape);
+
+        self.nodes.push(Tensor {
             id,
-            new_tensor.data.data,
-            Arc::new(ops::Sub),
-            new_tensor.data.shape,
-            vec![a, b],
-            true,
-        ));
+            inner,
+            grad: None,
+            shape: node_a.shape.clone(),
+            stride,
+            op: Arc::new(ops::Sub),
+            parents: vec![a, b],
+            req_grad: node_a.req_grad || node_b.req_grad,
+        });
+
         id
     }
 
-    pub fn add_broadcast(&mut self, a: TensorId, b: TensorId) -> TensorId {
-        let ma_shape = &self.nodes[a].data.shape;
-        let mb_shape = &self.nodes[b].data.shape;
-        let (ma, mb) = (&self.nodes[a].data, &self.nodes[b].data);
+    // broadcast b to a
+    pub fn add_broadcast(&mut self, into_tensor: TensorId, broadcast_tensor: TensorId) -> TensorId {
+        let ma_shape = &self.nodes[into_tensor].shape;
+        let mb_shape = &self.nodes[broadcast_tensor].shape;
+        let (ma, mb) = (&self.nodes[into_tensor], &self.nodes[broadcast_tensor]);
 
         // Check if b is a scalar (1x1)
         if mb_shape[0] == 1 && mb_shape[1] == 1 {
-            let scalar = mb.data[0];
+            let scalar_quantity = mb.inner;
             let out = ma.data.iter().map(|x| *x * scalar).collect();
 
             let id = self.nodes.len();
