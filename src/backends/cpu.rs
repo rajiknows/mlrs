@@ -10,7 +10,7 @@ pub struct CPUBackend;
 
 #[derive(Debug, Clone)]
 pub struct CpuTensor<T: Numeric> {
-    data: NdimVector<T>,
+    pub data: NdimVector<T>,
 }
 impl Backend for CPUBackend {
     type DType = f32;
@@ -28,7 +28,7 @@ impl Backend for CPUBackend {
 
     /* ---------- Elementwise ---------- */
 
-    fn add(a: &Self::Tensor, b: &Self::Tensor, _: &[usize]) -> Self::Tensor {
+    fn add(a: &Self::Tensor, b: &Self::Tensor) -> Self::Tensor {
         CpuTensor::new(
             a.data
                 .data
@@ -100,7 +100,12 @@ impl Backend for CPUBackend {
 
     /* ---------- Matrix ops ---------- */
 
-    fn matmul(a: &Self::Tensor, b: &Self::Tensor) -> Self::Tensor {
+    fn matmul(
+        a: &Self::Tensor,
+        b: &Self::Tensor,
+        _a_shape: &[usize],
+        _b_shape: &[usize],
+    ) -> Self::Tensor {
         let (m, k) = (a.data.shape[0], a.data.shape[1]);
         let n = b.data.shape[1];
 
@@ -116,7 +121,7 @@ impl Backend for CPUBackend {
         CpuTensor::new(out, vec![m, n])
     }
 
-    fn t(a: &Self::Tensor) -> Self::Tensor {
+    fn t(a: &Self::Tensor, _in_shape: &[usize]) -> Self::Tensor {
         let (r, c) = (a.data.shape[0], a.data.shape[1]);
         let mut out = vec![0.0; a.data.data.len()];
 
@@ -178,7 +183,7 @@ impl Backend for CPUBackend {
         )
     }
 
-    fn softmax(a: &Self::Tensor, _: usize) -> Self::Tensor {
+    fn softmax(a: &Self::Tensor, _: usize, _shape: &[usize]) -> Self::Tensor {
         let (r, c) = (a.data.shape[0], a.data.shape[1]);
         let mut out = vec![0.0; r * c];
 
@@ -222,7 +227,7 @@ impl Backend for CPUBackend {
     }
 
     fn cross_entropy(l: &Self::Tensor, t: &Self::Tensor) -> Self::Tensor {
-        let p = Self::softmax(l, 1);
+        let p = Self::softmax(l, 1, &l.data.shape);
         let mut s = 0.0;
         for i in 0..p.data.data.len() {
             if t.data.data[i] > 0.0 {
@@ -234,7 +239,7 @@ impl Backend for CPUBackend {
 
     /* ---------- Misc ---------- */
 
-    fn inv(a: &Self::Tensor) -> Self::Tensor {
+    fn inv(a: &Self::Tensor, _shape: &[usize]) -> Self::Tensor {
         let det = determinant(&a.data);
         assert!(det != 0.0);
         CpuTensor::new(

@@ -7,6 +7,7 @@ use crate::{
     tensor::{Tensor, TensorId},
     utils::calculate_strides,
 };
+
 /// The Graph only deals with creating the computational graph
 /// and does not care about the implementation of functions from backend
 pub struct Graph<T: Numeric, B: Backend<DType = T>> {
@@ -80,133 +81,159 @@ where
 
     // broadcast b to a
     pub fn add_broadcast(&mut self, into_tensor: TensorId, broadcast_tensor: TensorId) -> TensorId {
-        let ma_shape = &self.nodes[into_tensor].shape;
-        let mb_shape = &self.nodes[broadcast_tensor].shape;
-        let (ma, mb) = (&self.nodes[into_tensor], &self.nodes[broadcast_tensor]);
+        let node_a = &self.nodes[into_tensor];
+        let node_b = &self.nodes[broadcast_tensor];
 
-        // Check if b is a scalar (1x1)
-        if mb_shape[0] == 1 && mb_shape[1] == 1 {
-            let scalar_quantity = mb.inner;
-            let out = ma.data.iter().map(|x| *x * scalar).collect();
-
-            let id = self.nodes.len();
-            self.nodes.push(Tensor::new(
-                id,
-                out,
-                Arc::new(ops::AddBroadcast),
-                ma_shape.to_owned(),
-                vec![a, b],
-                true,
-            ));
-            return id;
+        if node_a.shape == node_b.shape {
+            return self.add(into_tensor, broadcast_tensor);
         }
 
-        // Otherwise, use regular add
-        self.add(a, b)
+        let b = B::broadcast(&node_b.inner, &node_a.shape);
+        let inner = B::add(&node_a.inner, &b);
+
+        let id = self.nodes.len();
+        let stride = calculate_strides(&node_a.shape);
+
+        self.nodes.push(Tensor {
+            id,
+            inner,
+            grad: None,
+            shape: node_a.shape.clone(),
+            stride,
+            op: Arc::new(ops::AddBroadcast),
+            parents: vec![into_tensor, broadcast_tensor],
+            req_grad: node_a.req_grad || node_b.req_grad,
+        });
+
+        id
     }
 
     pub fn neg(&mut self, x: TensorId) -> TensorId {
-        let out = B::neg(&self.nodes[x]);
+        let node = &self.nodes[x];
+        let inner = B::neg(&node.inner);
         let id = self.nodes.len();
 
-        self.nodes.push(Tensor::new(
+        self.nodes.push(Tensor {
             id,
-            out.data.data,
-            Arc::new(ops::Neg),
-            out.data.shape,
-            vec![x],
-            true,
-        ));
+            inner,
+            grad: None,
+            shape: node.shape.clone(),
+            stride: calculate_strides(&node.shape),
+            op: Arc::new(ops::Neg),
+            parents: vec![x],
+            req_grad: node.req_grad,
+        });
         id
     }
 
     pub fn log(&mut self, x: TensorId) -> TensorId {
-        let out = B::log(&self.nodes[x]);
+        let node = &self.nodes[x];
+        let inner = B::log(&node.inner);
         let id = self.nodes.len();
 
-        self.nodes.push(Tensor::new(
+        self.nodes.push(Tensor {
             id,
-            out.data.data,
-            Arc::new(ops::Log),
-            out.data.shape,
-            vec![x],
-            true,
-        ));
+            inner,
+            grad: None,
+            shape: node.shape.clone(),
+            stride: calculate_strides(&node.shape),
+            op: Arc::new(ops::Log),
+            parents: vec![x],
+            req_grad: node.req_grad,
+        });
         id
     }
 
     pub fn mul(&mut self, a: TensorId, b: TensorId) -> TensorId {
-        let out = B::mul(&self.nodes[a], &self.nodes[b]);
+        let node_a = &self.nodes[a];
+        let node_b = &self.nodes[b];
+
+        assert_eq!(node_a.shape, node_b.shape);
+
+        let inner = B::mul(&node_a.inner, &node_b.inner);
         let id = self.nodes.len();
 
-        self.nodes.push(Tensor::new(
+        self.nodes.push(Tensor {
             id,
-            out.data.data,
-            Arc::new(ops::Mul),
-            out.data.shape,
-            vec![a, b],
-            true,
-        ));
+            inner,
+            grad: None,
+            shape: node_a.shape.clone(),
+            stride: calculate_strides(&node_a.shape),
+            op: Arc::new(ops::Mul),
+            parents: vec![a, b],
+            req_grad: node_a.req_grad || node_b.req_grad,
+        });
         id
     }
 
     pub fn mean(&mut self, x: TensorId) -> TensorId {
-        let out = B::mean(&self.nodes[x]);
+        let node = &self.nodes[x];
+        let inner = B::mean(&node.inner);
         let id = self.nodes.len();
 
-        self.nodes.push(Tensor::new(
+        self.nodes.push(Tensor {
             id,
-            out.data.data,
-            Arc::new(ops::Mean),
-            out.data.shape,
-            vec![x],
-            true,
-        ));
+            inner,
+            grad: None,
+            shape: vec![1],
+            stride: calculate_strides(&[1]),
+            op: Arc::new(ops::Mean),
+            parents: vec![x],
+            req_grad: node.req_grad,
+        });
         id
     }
 
     pub fn matmul(&mut self, a: TensorId, b: TensorId) -> TensorId {
-        let out = B::matmul(&self.nodes[a], &self.nodes[b]);
+        let node_a = &self.nodes[a];
+        let node_b = &self.nodes[b];
+        let inner = B::matmul(&node_a.inner, &node_b.inner, &node_a.shape, &node_b.shape);
         let id = self.nodes.len();
 
-        self.nodes.push(Tensor::new(
+        let out_shape = vec![node_a.shape[0], node_b.shape[1]];
+        self.nodes.push(Tensor {
             id,
-            out.data.data,
-            Arc::new(ops::MatMul),
-            out.data.shape,
-            vec![a, b],
-            true,
-        ));
+            inner,
+            grad: None,
+            shape: out_shape.clone(),
+            stride: calculate_strides(&out_shape),
+            op: Arc::new(ops::MatMul),
+            parents: vec![a, b],
+            req_grad: node_a.req_grad || node_b.req_grad,
+        });
         id
     }
 
     pub fn sigmoid(&mut self, x: TensorId) -> TensorId {
-        let out = B::sigmoid(&self.nodes[x]);
+        let node = &self.nodes[x];
+        let inner = B::sigmoid(&node.inner);
         let id = self.nodes.len();
 
-        self.nodes.push(Tensor::new(
+        self.nodes.push(Tensor {
             id,
-            out.data.data,
-            Arc::new(ops::Sigmoid),
-            out.data.shape,
-            vec![x],
-            true,
-        ));
+            inner,
+            grad: None,
+            shape: node.shape.clone(),
+            stride: calculate_strides(&node.shape),
+            op: Arc::new(ops::Sigmoid),
+            parents: vec![x],
+            req_grad: node.req_grad,
+        });
         id
     }
 
     pub fn backtrack(&mut self, loss: TensorId) {
         for n in &mut self.nodes {
-            let grad_data = vec![T::zero(); n.data.data.len()];
-            n.grad = NdimVector {
-                data: grad_data,
-                shape: n.data.shape.clone(),
-                stride: n.data.stride.clone(),
-            }
+            n.grad = Some(B::fill(&n.inner, T::zero()));
         }
 
-        // seed dL/dL = 1
-        self.nodes[loss].grad.data[0] = T::one();
+        let loss_shape = self.nodes[loss].shape.clone();
+        let numel = loss_shape.iter().product::<usize>().max(1);
+        let mut grad_data = vec![T::zero(); numel];
+        if !grad_data.is_empty() {
+            grad_data[0] = T::one();
+        }
+        self.nodes[loss].grad = Some(B::from_cpu(&grad_data, &loss_shape));
 
         let topo = self.topo_from(loss);
 
@@ -217,43 +244,49 @@ where
     }
 
     fn backward_node(&mut self, id: TensorId) {
-        let (op, parents, grad, _out_data) = {
+        let (op, parents) = {
             let n = &self.nodes[id];
-            (
-                n.op.clone(),
-                n.parents.clone(),
-                n.grad.clone(),
-                n.data.clone(),
-            )
+            (n.op.clone(), n.parents.clone())
         };
-        let parent_nodes: Vec<&Tensor<T, B>> = parents.iter().map(|&p| &self.nodes[p]).collect();
-        let grads = op.backward(
-            &parent_nodes,
-            &Tensor::new(0, grad.data, Arc::new(ops::NoOp), grad.shape, vec![], false),
-        );
 
-        for (i, &p) in parents.iter().enumerate() {
-            for (j, g) in self.nodes[p].grad.data.iter_mut().enumerate() {
-                *g = *g + grads[i].data.data[j];
-            }
+        if parents.is_empty() {
+            return;
+        }
+
+        let grad = match self.nodes[id].grad.as_ref() {
+            Some(g) => g,
+            None => return,
+        };
+
+        let parent_nodes: Vec<&Tensor<T, B>> = parents.iter().map(|&p| &self.nodes[p]).collect();
+        let grads = op.backward(&parent_nodes, grad);
+
+        for (p, g) in parents.into_iter().zip(grads.into_iter()) {
+            let existing = self.nodes[p].grad.take();
+            let new_grad = match existing {
+                Some(existing) => B::add(&existing, &g),
+                None => g,
+            };
+            self.nodes[p].grad = Some(new_grad);
         }
     }
 
     pub fn zero_grad(&mut self) {
         for n in &mut self.nodes {
-            for g in &mut n.grad.data {
-                *g = T::zero();
-            }
+            n.grad = Some(B::fill(&n.inner, T::zero()));
         }
     }
 
     pub fn step(&mut self, lr: f32) {
+        let lr_t = T::from_f32(lr).unwrap();
         for n in &mut self.nodes {
-            if n.req_grad {
-                for i in 0..n.data.data.len() {
-                    let learning_rate = T::from_f32(lr).unwrap();
-                    n.data.data[i] = n.data.data[i] - learning_rate * n.grad.data[i];
-                }
+            if n.req_grad != true {
+                continue;
+            }
+            if let Some(grad) = n.grad.as_ref() {
+                let lr_tensor = B::fill(grad, lr_t);
+                let scaled = B::mul(&lr_tensor, grad);
+                n.inner = B::sub(&n.inner, &scaled);
             }
         }
     }
@@ -284,8 +317,23 @@ where
         stack
     }
 
-    pub fn mul_scaler(&mut self, a: TensorId, _x: T) -> TensorId {
-        let _node = &self.nodes[a];
-        todo!()
+    pub fn mul_scaler(&mut self, a: TensorId, x: T) -> TensorId {
+        let node = &self.nodes[a];
+        let inner = B::fill(&node.inner, x);
+        let id = self.nodes.len();
+        let shape = node.shape.clone();
+
+        self.nodes.push(Tensor {
+            id,
+            inner,
+            grad: None,
+            shape: shape.clone(),
+            stride: calculate_strides(&shape),
+            op: Arc::new(ops::NoOp),
+            parents: Vec::new(),
+            req_grad: false,
+        });
+
+        self.mul(a, id)
     }
 }

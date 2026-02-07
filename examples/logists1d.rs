@@ -1,7 +1,4 @@
-use mlrs::{
-    backends::cpu::CPUBackend,
-    tensor::Graph,
-};
+use mlrs::{backends::cpu::CPUBackend, graph::Graph};
 
 fn main() {
     let mut g: Graph<f32, CPUBackend> = Graph::new();
@@ -40,24 +37,23 @@ fn main() {
         g.step(0.1);
 
         if epoch % 500 == 0 {
-            let loss_val = g.nodes[loss].data.data[0];
+            let loss_val = g.nodes[loss].inner.data.data[0];
             println!(
                 "Epoch {}: loss = {:.4}, w = {:.4}, b = {:.4}",
-                epoch, loss_val, g.nodes[w].data.data[0], g.nodes[b].data.data[0]
+                epoch, loss_val, g.nodes[w].inner.data.data[0], g.nodes[b].inner.data.data[0]
             );
         }
     }
 
     println!("\nFinal parameters:");
-    println!("w = {:.4}", g.nodes[w].data.data[0]);
-    println!("b = {:.4}", g.nodes[b].data.data[0]);
+    println!("w = {:.4}", g.nodes[w].inner.data.data[0]);
+    println!("b = {:.4}", g.nodes[b].inner.data.data[0]);
 
     println!("\nPredictions:");
     for &xi in &x_data {
-        let z = xi * g.nodes[w].data.data[0] + g.nodes[b].data.data[0];
+        let z = xi * g.nodes[w].inner.data.data[0] + g.nodes[b].inner.data.data[0];
         let p = 1.0 / (1.0 + (-z).exp());
         let class = if p > 0.5 { 1 } else { 0 };
         println!("x = {:>5.1}, y_hat = {:.3}, class = {}", xi, p, class);
     }
 }
-

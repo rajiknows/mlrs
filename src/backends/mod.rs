@@ -5,7 +5,7 @@ pub mod wgpu;
 
 pub trait Backend: Clone + 'static {
     type DType: Numeric;
-    type Tensor;
+    type Tensor: Clone;
 
     /* ---------- IO ---------- */
 

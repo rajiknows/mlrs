@@ -1,7 +1,4 @@
-use mlrs::{
-    backends::cpu::CPUBackend,
-    tensor::{Graph, Tensor, TensorId},
-};
+use mlrs::{backends::cpu::CPUBackend, graph::Graph};
 use std::{fs::File, io::Read};
 
 fn load_data(rows: usize, cols: usize, path: &str) -> (Vec<f32>, Vec<usize>) {
@@ -38,10 +35,10 @@ fn main() {
 
     // Xavier initialization for better convergence
     let init_scale = (2.0 / 784.0_f32).sqrt();
-    for i in 0..g.nodes[w].data.data.len() {
-        g.nodes[w].data.data[i] = (rand::random::<f32>() - 0.5) * init_scale;
+    for i in 0..g.nodes[w].inner.data.data.len() {
+        g.nodes[w].inner.data.data[i] = (rand::random::<f32>() - 0.5) * init_scale;
     }
-    g.nodes[b].data.data[0] = 0.0;
+    g.nodes[b].inner.data.data[0] = 0.0;
 
     // Create "one" vector once, outside the loop
     let one = g.tensor(vec![1.0; n], vec![n, 1], false);
@@ -74,14 +71,14 @@ fn main() {
 
         // Calculate training accuracy every epoch
         if epoch % 5 == 0 || epoch == 49 {
-            let loss_val = g.nodes[loss].data.data[0];
+            let loss_val = g.nodes[loss].inner.data.data[0];
 
             // Calculate accuracy
-            let predictions = &g.nodes[y_hat].data;
+            let predictions = &g.nodes[y_hat].inner.data;
             let mut correct = 0;
             for i in 0..n {
                 let pred_class = if predictions.data[i] > 0.5 { 1.0 } else { 0.0 };
-                if pred_class == g.nodes[y_id].data.data[i] {
+                if pred_class == g.nodes[y_id].inner.data.data[i] {
                     correct += 1;
                 }
             }
@@ -98,8 +95,8 @@ fn main() {
     println!("\n=== Test Set Evaluation ===");
 
     // Manual forward pass on test data
-    let w_data = &g.nodes[w].data;
-    let b_val = g.nodes[b].data.data[0];
+    let w_data = &g.nodes[w].inner.data;
+    let b_val = g.nodes[b].inner.data.data[0];
 
     let mut correct = 0;
     for i in 0..test_images_shape[0] {
@@ -125,4 +122,3 @@ fn main() {
     println!("\nFirst 10 weights: {:?}", &w_data.data[..10]);
     println!("Bias: {:.4}", b_val);
 }
-

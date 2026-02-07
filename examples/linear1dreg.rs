@@ -1,7 +1,4 @@
-use mlrs::{
-    backends::cpu::CPUBackend,
-    tensor::Graph,
-};
+use mlrs::{backends::cpu::CPUBackend, graph::Graph};
 
 fn main() {
     // y = 2x + 1
@@ -29,7 +26,6 @@ fn main() {
         g.step(0.01);
     }
 
-    println!("w = {}", g.nodes[w].data.data[0]);
-    println!("b = {}", g.nodes[b].data.data[0]);
+    println!("w = {}", g.nodes[w].inner.data.data[0]);
+    println!("b = {}", g.nodes[b].inner.data.data[0]);
 }
-
